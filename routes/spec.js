@@ -3740,11 +3740,9 @@ You can find data that can be used to convert hero and ability IDs and other inf
             required: false,
             style: "form",
             explode: false,
-            schema: {
-              type: "array",
-              items: {
-                type: "integer",
-              },
+            type: "array",
+            items: {
+              type: "integer",
             },
           },
           {
@@ -3754,11 +3752,9 @@ You can find data that can be used to convert hero and ability IDs and other inf
             required: false,
             style: "form",
             explode: false,
-            schema: {
-              type: "array",
-              items: {
-                type: "integer",
-              },
+            type: "array",
+            items: {
+              type: "integer",
             },
           },
         ],
