@@ -1,14 +1,14 @@
-const async = require("async");
-const db = require("../store/db");
-const queries = require("../store/queries");
+import { eachSeries, each } from "async";
+import db, { select } from "../store/db";
+import { upsert } from "../store/queries";
 
-db.select(["radiant_team_id", "dire_team_id", "match_id"])
+select(["radiant_team_id", "dire_team_id", "match_id"])
   .from("matches")
   .asCallback((err, matches) => {
     if (err) {
       throw err;
     }
-    async.eachSeries(
+    eachSeries(
       matches,
       (match, cb) => {
         console.log(match.match_id);
@@ -27,10 +27,10 @@ db.select(["radiant_team_id", "dire_team_id", "match_id"])
             radiant: false,
           });
         }
-        async.each(
+        each(
           arr,
           (tm, cb) => {
-            queries.upsert(
+            upsert(
               db,
               "team_match",
               tm,

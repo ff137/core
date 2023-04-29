@@ -1,13 +1,13 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const uuid = require("uuid/v4");
-const db = require("../store/db");
+import { json, urlencoded } from "body-parser";
+import { Router } from "express";
+import uuid from "uuid/v4";
+import db, { from, select } from "../store/db";
 
-const hooks = express.Router();
+const hooks = Router();
 
-hooks.use(bodyParser.json());
+hooks.use(json());
 hooks.use(
-  bodyParser.urlencoded({
+  urlencoded({
     extended: true,
   })
 );
@@ -66,7 +66,7 @@ hooks
   .route("/")
   // List all of a user's webhooks
   .get((req, res, next) => {
-    db.select("hook_id")
+    select("hook_id")
       .from("webhooks")
       .where("account_id", req.user.account_id)
       .then((results) => res.json(results))
@@ -81,8 +81,7 @@ hooks
     const { url, subscriptions } = req.body;
     const { teams, players, leagues } = subscriptions;
 
-    return db
-      .from("webhooks")
+    return from("webhooks")
       .where({
         account_id: accountId,
         url,
@@ -178,4 +177,4 @@ hooks
       });
   });
 
-module.exports = hooks;
+export default hooks;

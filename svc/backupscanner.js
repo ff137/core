@@ -1,19 +1,19 @@
-const async = require("async");
-const utility = require("../util/utility");
-const redis = require("../store/redis");
-const queries = require("../store/queries");
-const config = require("../config");
+import { eachLimit } from "async";
+import { STEAM_API_HOST, STEAM_API_KEY } from "../config";
+import queries from "../store/queries";
+import { get, setex, zrange } from "../store/redis";
+import utility from "../util/utility";
 
 const { generateJob, getData } = utility;
 const { insertMatch } = queries;
-const apiKeys = config.STEAM_API_KEY.split(",");
-const apiHosts = config.STEAM_API_HOST.split(",");
+const apiKeys = STEAM_API_KEY.split(",");
+const apiHosts = STEAM_API_HOST.split(",");
 const parallelism = Math.min(apiHosts.length * 1, apiKeys.length);
 const delay = 1000;
 
 function processMatch(matchId, cb) {
   // Check if exists
-  redis.get(`scanner_insert:${matchId}`, (err, res) => {
+  get(`scanner_insert:${matchId}`, (err, res) => {
     if (err) {
       return cb(err);
     }
@@ -48,7 +48,7 @@ function processMatch(matchId, cb) {
             if (!err) {
               // Set with long expiration (1 month) to avoid picking up the same matches again
               // If GetMatchHistoryBySequenceNum is out for a long time, this might be a problem
-              redis.setex(
+              setex(
                 `scanner_insert:${match.match_id}`,
                 3600 * 24 * 30,
                 1
@@ -79,7 +79,7 @@ function processPlayer(accountId, cb) {
         // Skip this player on this iteration
         return cb();
       }
-      return redis.get("match_seq_num", (err, res) => {
+      return get("match_seq_num", (err, res) => {
         if (err) {
           return cb(err);
         }
@@ -87,7 +87,7 @@ function processPlayer(accountId, cb) {
         const matches = body.result.matches
           .filter((m) => m.match_seq_num > Number(res))
           .map((m) => m.match_id);
-        return async.eachLimit(matches, 1, processMatch, cb);
+        return eachLimit(matches, 1, processMatch, cb);
       });
     }
   );
@@ -99,11 +99,11 @@ function start(err) {
   }
   console.log("starting backupscanner loop");
   setTimeout(() => {
-    redis.zrange("tracked", 0, -1, (err, ids) => {
+    zrange("tracked", 0, -1, (err, ids) => {
       if (err) {
         throw err;
       }
-      async.eachLimit(ids, parallelism, processPlayer, start);
+      eachLimit(ids, parallelism, processPlayer, start);
     });
   }, 1000);
 }

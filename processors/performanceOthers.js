@@ -66,4 +66,4 @@ function performanceOthers(e, container, meta) {
   track(e, container, meta);
 }
 
-module.exports = performanceOthers;
+export default performanceOthers;

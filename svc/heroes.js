@@ -1,7 +1,7 @@
-const async = require("async");
-const db = require("../store/db");
-const utility = require("../util/utility");
-const queries = require("../store/queries");
+import { eachSeries } from "async";
+import db from "../store/db";
+import { upsert } from "../store/queries";
+import utility from "../util/utility";
 
 const { invokeInterval, generateJob, getData } = utility;
 
@@ -22,11 +22,11 @@ function doHeroes(cb) {
         if (err || !heroData) {
           return cb();
         }
-        return async.eachSeries(
+        return eachSeries(
           body.result.heroes,
           (hero, cb) => {
             const heroDataHero = heroData[hero.id] || {};
-            queries.upsert(
+            upsert(
               db,
               "heroes",
               {

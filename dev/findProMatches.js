@@ -1,7 +1,7 @@
-const async = require("async");
-const queries = require("../store/queries");
-const db = require("../store/db");
-const utility = require("../util/utility");
+import { eachSeries } from "async";
+import { insertMatch } from "../store/queries";
+import { select } from "../store/db";
+import utility from "../util/utility";
 
 const { generateJob, getData } = utility;
 // const leagueUrl = generateJob('api_leagues', {}).url;
@@ -16,7 +16,7 @@ function getPage(url, leagueid, cb) {
       data.result.total_results,
       data.result.results_remaining
     );
-    async.eachSeries(
+    eachSeries(
       data.result.matches,
       (match, cb) => {
         console.log(match.match_id);
@@ -35,7 +35,7 @@ function getPage(url, leagueid, cb) {
             }
             if (body.result) {
               const match = body.result;
-              queries.insertMatch(match, { skipParse: true }, (err) => {
+              insertMatch(match, { skipParse: true }, (err) => {
                 if (err) {
                   throw err;
                 }
@@ -67,7 +67,7 @@ function getPage(url, leagueid, cb) {
 }
 
 // From DB
-db.select("leagueid")
+select("leagueid")
   .from("leagues")
   .where("tier", "professional")
   .orWhere("tier", "premium")
@@ -76,7 +76,7 @@ db.select("leagueid")
       throw err;
     }
     const leagueIds = data.map((l) => l.leagueid);
-    async.eachSeries(
+    eachSeries(
       leagueIds,
       (leagueid, cb) => {
         const { url } = generateJob("api_history", {

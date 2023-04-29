@@ -49,4 +49,4 @@ function processReduce(entries, meta) {
   */
   return result;
 }
-module.exports = processReduce;
+export default processReduce;

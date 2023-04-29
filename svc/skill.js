@@ -1,25 +1,24 @@
 /**
  * Worker checking the GetMatchHistory endpoint to get skill data for matches
  * */
-const constants = require("dotaconstants");
-const async = require("async");
-const config = require("../config");
-const utility = require("../util/utility");
-const queries = require("../store/queries");
+import { eachLimit, eachSeries } from "async";
+import { heroes as _heroes } from "dotaconstants";
+import { STEAM_API_KEY } from "../config";
+import { generateJob, getData } from "../util/utility";
 
-const apiKeys = config.STEAM_API_KEY.split(",");
+const apiKeys = STEAM_API_KEY.split(",");
 const parallelism = Math.min(3, apiKeys.length);
 const skills = [1, 2, 3];
-const heroes = Object.keys(constants.heroes);
+const heroes = Object.keys(_heroes);
 const permute = [];
 
 function getPageData(start, options, cb) {
-  const container = utility.generateJob("api_skill", {
+  const container = generateJob("api_skill", {
     skill: options.skill,
     hero_id: options.hero_id,
     start_at_match_id: start,
   });
-  utility.getData(
+  getData(
     {
       url: container.url,
     },
@@ -32,7 +31,7 @@ function getPageData(start, options, cb) {
       }
       // data is in data.result.matches
       const { matches } = data.result;
-      return async.eachSeries(
+      return eachSeries(
         matches,
         (m, cb) => {
           cb();
@@ -59,7 +58,7 @@ function getPageData(start, options, cb) {
 }
 
 function scanSkill() {
-  async.eachLimit(
+  eachLimit(
     permute,
     parallelism,
     (object, cb) => {

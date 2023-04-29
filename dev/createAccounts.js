@@ -1,11 +1,11 @@
 /* eslint-disable */
-const Steam = require("steam");
-const SteamUser = require("steam-user");
-const async = require("async");
+import { EResult } from "steam";
+import SteamUser from "steam-user";
+import { eachSeries } from "async";
 
 const steam = new SteamUser();
 const time = Math.floor(new Date() / 1000);
-async.eachSeries(
+eachSeries(
   Array.from(new Array(1000), (v, i) => i),
   (i, cb) => {
     steam.logOn(() => {});
@@ -15,7 +15,7 @@ async.eachSeries(
       const email = `${name}@email.com`;
       steam.createAccount(name, password, email, (result, steamid) => {
         console.error(name, password, result, steamid);
-        if (result === Steam.EResult.OK) {
+        if (result === EResult.OK) {
           console.log("%s\t%s", name, password);
         }
         steam.logOff(() => {});

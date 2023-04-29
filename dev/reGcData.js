@@ -1,17 +1,17 @@
 /**
  * Call getGcData for all matches in match table
  * */
-const async = require("async");
-const db = require("../store/db");
-const getGcData = require("../util/getGcData");
+import { eachSeries } from "async";
+import { select } from "../store/db";
+import getGcData from "../util/getGcData";
 
-db.select(["match_id"])
+select(["match_id"])
   .from("matches")
   .asCallback((err, matches) => {
     if (err) {
       throw err;
     }
-    async.eachSeries(
+    eachSeries(
       matches,
       (match, cb) => {
         console.log(match.match_id);

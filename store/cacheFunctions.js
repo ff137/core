@@ -1,9 +1,7 @@
-const redis = require("./redis");
-const config = require("../config");
 
 const getKeys = () => ["wl", "heroes", "peers", "counts"];
 
-module.exports = {
+export default {
   read: (req, cb) => {
     // console.log(`[READCACHE] cache:${req.key}:${req.account_id}`);
     redis.get(`cache:${req.key}:${req.account_id}`, cb);

@@ -2,16 +2,16 @@
  * Worker interfacing with the Steam GC.
  * Provides HTTP endpoints for other workers.
  * */
-const Steam = require("steam");
-const Dota2 = require("dota2");
-const async = require("async");
-const express = require("express");
-const compression = require("compression");
-const cp = require("child_process");
-const os = require("os");
-const config = require("../config");
+import { each } from "async";
+import { execSync } from "child_process";
+import compression from "compression";
+import { Dota2Client } from "dota2";
+import express from "express";
+import { hostname as _hostname, uptime as _uptime } from "os";
+import { EResult, SteamClient, SteamFriends, SteamUser, servers } from "steam";
+import { ENABLE_RETRIEVER_ADVANCED_AUTH, NODE_ENV, PORT, RETRIEVER_PORT, RETRIEVER_SECRET, STEAM_ACCOUNT_DATA, STEAM_PASS, STEAM_USER } from "../config";
 
-const advancedAuth = config.ENABLE_RETRIEVER_ADVANCED_AUTH
+const advancedAuth = ENABLE_RETRIEVER_ADVANCED_AUTH
   ? {
       /* eslint-disable global-require */
       redis: require("../store/redis"),
@@ -28,7 +28,7 @@ const minUpTimeSeconds = 60;
 const timeoutMs = 1500;
 const accountsToUse = 9;
 const matchRequestLimit = 950;
-const port = config.PORT || config.RETRIEVER_PORT;
+const port = PORT || RETRIEVER_PORT;
 const matchRequestDelay = 700;
 const matchRequestDelayStep = 3;
 
@@ -39,11 +39,11 @@ let matchSuccesses = 0;
 let profileRequests = 0;
 let profileSuccesses = 0;
 let allReady = false;
-let users = config.STEAM_USER.split(",");
-let passes = config.STEAM_PASS.split(",");
+let users = STEAM_USER.split(",");
+let passes = STEAM_PASS.split(",");
 
 // For the latest list: https://api.steampowered.com/ISteamDirectory/GetCMList/v1/?format=json&cellid=0
-Steam.servers = [
+servers = [
   { host: "155.133.242.9", port: 27018 },
   { host: "185.25.180.15", port: 27019 },
   { host: "185.25.180.15", port: 27018 },
@@ -135,7 +135,7 @@ function getUptime() {
 }
 
 function getServerUptime() {
-  return os.uptime();
+  return _uptime();
 }
 
 function genStats() {
@@ -146,7 +146,7 @@ function genStats() {
     profileSuccesses,
     uptime: getUptime(),
     serverUptime: getServerUptime(),
-    hostname: os.hostname(),
+    hostname: _hostname(),
     numReadyAccounts: Object.keys(steamObj).length,
     totalAccounts: users.length,
   };
@@ -232,10 +232,10 @@ function getGcMatchData(idx, matchId, cb) {
 }
 
 function init() {
-  async.each(
+  each(
     Array.from(new Array(users.length), (v, i) => i),
     (i, cb) => {
-      const client = new Steam.SteamClient();
+      const client = new SteamClient();
       const user = users[i];
       const pass = passes[i];
       const logOnDetails = {
@@ -243,10 +243,10 @@ function init() {
         password: pass,
       };
 
-      client.steamUser = new Steam.SteamUser(client);
-      client.steamFriends = new Steam.SteamFriends(client);
+      client.steamUser = new SteamUser(client);
+      client.steamFriends = new SteamFriends(client);
       client.logOnDetails = logOnDetails;
-      client.Dota2 = new Dota2.Dota2Client(client, false);
+      client.Dota2 = new Dota2Client(client, false);
       client.Dota2.on("ready", () => {
         console.log("acct %s ready", i);
         cb();
@@ -263,9 +263,9 @@ function init() {
           delete advancedAuth.pendingSteamGuardAuth[user];
 
           const isTwoFactorAuth =
-            logOnResp.eresult === Steam.EResult.AccountLoginDeniedNeedTwoFactor;
+            logOnResp.eresult === EResult.AccountLoginDeniedNeedTwoFactor;
           const isSteamGuard =
-            logOnResp.eresult === Steam.EResult.AccountLogonDenied;
+            logOnResp.eresult === EResult.AccountLogonDenied;
           if (isTwoFactorAuth || isSteamGuard) {
             console.log("[STEAM] Account %s is protected", user);
             if (isTwoFactorAuth) {
@@ -280,7 +280,7 @@ function init() {
           }
         }
 
-        if (logOnResp.eresult !== Steam.EResult.OK) {
+        if (logOnResp.eresult !== EResult.OK) {
           // try logging on again
           console.error(logOnResp);
           client.steamUser.logOn(logOnDetails);
@@ -330,7 +330,7 @@ function init() {
 
             callback({
               filename: machineAuth.filename,
-              eresult: Steam.EResult.OK,
+              eresult: EResult.OK,
               filesize: newSentry.length,
               sha_file: sha,
               getlasterror: 0,
@@ -399,9 +399,8 @@ function init() {
 }
 
 function chooseLoginInfo() {
-  if (config.STEAM_ACCOUNT_DATA) {
-    const accountData = cp
-      .execSync(`curl '${config.STEAM_ACCOUNT_DATA}'`, {
+  if (STEAM_ACCOUNT_DATA) {
+    const accountData = execSync(`curl '${STEAM_ACCOUNT_DATA}'`, {
         maxBuffer: 8 * 1024 * 1024,
       })
       .toString()
@@ -431,7 +430,7 @@ app.get("/healthz", (req, res) => {
   res.end("ok");
 });
 app.use((req, res, cb) => {
-  if (config.RETRIEVER_SECRET && config.RETRIEVER_SECRET !== req.query.key) {
+  if (RETRIEVER_SECRET && RETRIEVER_SECRET !== req.query.key) {
     // reject request if it doesn't have key
     return cb("invalid key");
   }
@@ -503,7 +502,7 @@ app.use((req, res, cb) => {
   const shouldRestart =
     (matchRequests > matchRequestLimit && getUptime() > minUpTimeSeconds) ||
     (!allReady && getUptime() > minUpTimeSeconds);
-  if (shouldRestart && config.NODE_ENV !== "development") {
+  if (shouldRestart && NODE_ENV !== "development") {
     return selfDestruct();
   }
   if (!allReady) {

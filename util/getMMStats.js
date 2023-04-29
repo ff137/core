@@ -1,10 +1,10 @@
-const utility = require("./utility");
-const config = require("../config");
+import { MMSTATS_DATA_INTERVAL, RETRIEVER_SECRET } from "../config";
+import utility, { getRetrieverArr } from "./utility";
 
-const secret = config.RETRIEVER_SECRET;
+const secret = RETRIEVER_SECRET;
 const { getData } = utility;
-const retrieverArr = utility.getRetrieverArr();
-const DATA_POINTS = (60 / (config.MMSTATS_DATA_INTERVAL || 1)) * 24; // Store 24 hours worth of data
+const retrieverArr = getRetrieverArr();
+const DATA_POINTS = (60 / (MMSTATS_DATA_INTERVAL || 1)) * 24; // Store 24 hours worth of data
 
 function getMMStats(redis, cb) {
   const urls = retrieverArr.map((r) => `http://${r}?key=${secret}&mmstats=1`);
@@ -22,4 +22,4 @@ function getMMStats(redis, cb) {
   });
 }
 
-module.exports = getMMStats;
+export default getMMStats;

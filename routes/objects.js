@@ -260,7 +260,7 @@ const leagueObject = {
   },
 };
 
-module.exports = {
+export default {
   matchObject,
   teamObject,
   heroObject,

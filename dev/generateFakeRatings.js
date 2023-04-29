@@ -1,5 +1,5 @@
-const async = require("async");
-const db = require("../store/db");
+import { each } from "async";
+import { from, insert } from "../store/db";
 
 function randByCentralLimitTheorem() {
   let v = 0;
@@ -18,8 +18,8 @@ function gaussianRandom(mean, std) {
   return randByCentralLimitTheorem() * std + mean;
 }
 
-db.from("players").asCallback((err, players) => {
-  async.each(
+from("players").asCallback((err, players) => {
+  each(
     players,
     (p, cb) => {
       const fake = {
@@ -30,7 +30,7 @@ db.from("players").asCallback((err, players) => {
         time: new Date(),
       };
       console.log(fake.account_id, fake.solo_competitive_rank);
-      db.insert(fake).into("player_ratings").asCallback(cb);
+      insert(fake).into("player_ratings").asCallback(cb);
     },
     (err) => {
       process.exit(Number(err));

@@ -1,13 +1,13 @@
-const redis = require("redis");
-const { promisify } = require("util");
-const request = require("request");
-const JSONStream = require("JSONStream");
-const config = require("../config");
-const db = require("../store/db");
-const queries = require("../store/queries");
-const { redisCount } = require("../util/utility");
+import { parse } from "JSONStream";
+import { createClient } from "redis";
+import { post } from "request";
+import { promisify } from "util";
+import { REDIS_URL, WEBHOOK_FEED_INTERVAL, WEBHOOK_TIMEOUT } from "../config";
+import db from "../store/db";
+import { getWebhooks } from "../store/queries";
+import { redisCount } from "../util/utility";
 
-const redisClient = redis.createClient(config.REDIS_URL, {
+const redisClient = createClient(REDIS_URL, {
   detect_buffers: true,
 });
 redisClient.on("error", (err) => {
@@ -36,8 +36,8 @@ function filterWebhook(webhook, match) {
 
 const readFromFeed = async (seqNum) => {
   const result = await asyncXRead("block", "0", "STREAMS", "feed", seqNum);
-  const hookStream = queries.getWebhooks(db);
-  hookStream.pipe(JSONStream.parse());
+  const hookStream = getWebhooks(db);
+  hookStream.pipe(parse());
 
   console.log(result[0][1].length);
 
@@ -47,11 +47,10 @@ const readFromFeed = async (seqNum) => {
       const match = JSON.parse(dataArray[1]["1"]);
       if (filterWebhook(webhook, match)) {
         redisCount(redisClient, "webhook");
-        request
-          .post(webhook.url, {
+        post(webhook.url, {
             json: true,
             body: match,
-            timeout: config.WEBHOOK_TIMEOUT,
+            timeout: WEBHOOK_TIMEOUT,
           })
           .on("error", (err) => console.log(`${webhook.url} - ${err.code}`));
       }
@@ -61,7 +60,7 @@ const readFromFeed = async (seqNum) => {
   const l = result[0][1].length;
   const lastIndex = l ? result[0][1][l - 1][0] : "$";
   redisClient.set("webhooks:seqNum", lastIndex);
-  setTimeout(() => readFromFeed(lastIndex), config.WEBHOOK_FEED_INTERVAL);
+  setTimeout(() => readFromFeed(lastIndex), WEBHOOK_FEED_INTERVAL);
 };
 
 asyncGet("webhooks:seqNum")

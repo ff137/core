@@ -1,4 +1,4 @@
-const utility = require("./utility");
+import utility, { isSignificant } from "./utility";
 
 const { isRadiant } = utility;
 
@@ -117,7 +117,7 @@ function filter(matches, filters) {
       });
     },
     significant(m, key) {
-      return Number(utility.isSignificant(m)) === key;
+      return Number(isSignificant(m)) === key;
     },
     leagueid(m, key) {
       return m.leagueid === key;
@@ -144,4 +144,4 @@ function filter(matches, filters) {
   }
   return filtered;
 }
-module.exports = filter;
+export default filter;

@@ -1,11 +1,11 @@
 /**
  * Load a range of matches by match_seq_num from the Steam API, without replay parsing
  * */
-const async = require("async");
-const cluster = require("cluster");
-const utility = require("../util/utility");
-const redis = require("../store/redis");
-const queries = require("../store/queries");
+import { each } from "async";
+import { isMaster, fork, on } from "cluster";
+import utility from "../util/utility";
+import { set, get } from "../store/redis";
+import queries from "../store/queries";
 
 const { generateJob, getData } = utility;
 const { insertMatch } = queries;
@@ -41,7 +41,7 @@ function getPage(matchSeqNum, bucket) {
       }
       if (body.result) {
         const { matches } = body.result;
-        async.each(
+        each(
           matches,
           (match, cb) => {
             insertMatch(
@@ -58,7 +58,7 @@ function getPage(matchSeqNum, bucket) {
               throw err;
             }
             const nextSeqNum = matches[matches.length - 1].match_seq_num + 1;
-            redis.set(`complete_history:${bucket}`, nextSeqNum);
+            set(`complete_history:${bucket}`, nextSeqNum);
             return getPage(nextSeqNum, bucket);
           }
         );
@@ -69,14 +69,14 @@ function getPage(matchSeqNum, bucket) {
   );
 }
 
-if (cluster.isMaster) {
+if (isMaster) {
   // Fork workers.
   for (let i = startSeqNum; i < endSeqNum; i += bucketSize) {
-    cluster.fork({
+    fork({
       BUCKET: i,
     });
   }
-  cluster.on("exit", (worker, code) => {
+  on("exit", (worker, code) => {
     if (code !== 0) {
       throw new Error("worker died");
     }
@@ -84,7 +84,7 @@ if (cluster.isMaster) {
   });
 } else {
   const bucket = Number(process.env.BUCKET);
-  redis.get(`complete_history:${bucket}`, (err, result) => {
+  get(`complete_history:${bucket}`, (err, result) => {
     if (err) {
       throw err;
     }

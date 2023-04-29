@@ -1,20 +1,20 @@
-const express = require("express");
-const uuid = require("uuid/v4");
-const bodyParser = require("body-parser");
-const moment = require("moment");
-const async = require("async");
-const stripeLib = require("stripe");
-const db = require("../store/db");
-const redis = require("../store/redis");
-const config = require("../config");
+import { parallel } from "async";
+import { json, urlencoded } from "body-parser";
+import { Router } from "express";
+import moment from "moment";
+import stripeLib from "stripe";
+import uuid from "uuid/v4";
+import { STRIPE_API_PLAN, STRIPE_SECRET } from "../config";
+import { from, raw } from "../store/db";
+import { sadd, srem } from "../store/redis";
 
-const stripe = stripeLib(config.STRIPE_SECRET);
-const stripeAPIPlan = config.STRIPE_API_PLAN;
-const keys = express.Router();
+const stripe = stripeLib(STRIPE_SECRET);
+const stripeAPIPlan = STRIPE_API_PLAN;
+const keys = Router();
 
-keys.use(bodyParser.json());
+keys.use(json());
 keys.use(
-  bodyParser.urlencoded({
+  urlencoded({
     extended: true,
   })
 );
@@ -62,7 +62,7 @@ async function getOpenInvoices(customerId) {
 keys
   .route("/")
   .all(async (req, res, next) => {
-    const rows = await db.from("api_keys").where({
+    const rows = await from("api_keys").where({
       account_id: req.user.account_id,
     });
 
@@ -78,14 +78,14 @@ keys
       return res.json({});
     }
 
-    async.parallel(
+    parallel(
       {
         customer: (cb) => {
-          if(!keyRecord) {
+          if (!keyRecord) {
             return cb();
           }
 
-          const { api_key, customer_id, subscription_id} = keyRecord;
+          const { api_key, customer_id, subscription_id } = keyRecord;
           const toReturn = {
             api_key
           };
@@ -107,7 +107,7 @@ keys
             .catch((err) => cb(err));
         },
         openInvoices: (cb) => {
-          if(allKeyRecords.length === 0) {
+          if (allKeyRecords.length === 0) {
             return cb();
           }
 
@@ -121,12 +121,12 @@ keys
               created: i.created
             }));
 
-          return cb(null,processed);
+            return cb(null, processed);
           });
 
         },
         usage: (cb) => {
-          db.raw(
+          raw(
             `
                 SELECT
                   account_id,
@@ -180,8 +180,7 @@ keys
     // Immediately bill the customer for any unpaid usage
     await stripe.subscriptions.del(subscription_id, { invoice_now: true });
 
-    await db
-      .from("api_keys")
+    await from("api_keys")
       .where({
         account_id: req.user.account_id,
         subscription_id,
@@ -191,7 +190,7 @@ keys
       });
 
     // Force the key to be disabled
-    redis.srem("api_keys", api_key, (err) => {
+    srem("api_keys", api_key, (err) => {
       if (err) {
         throw err;
       }
@@ -218,14 +217,14 @@ keys
       return res.sendStatus(200);
     }
     // returning customer
-    else if(allKeyRecords.length > 0) {
+    else if (allKeyRecords.length > 0) {
       customer_id = allKeyRecords[0].customer_id;
 
       const invoices = await getOpenInvoices(customer_id);
 
       if (invoices.length > 0) {
         console.log("Open invoices exist for", req.user.account_id, "customer", customer_id);
-        return res.status(402).json({error: "Open invoice"});
+        return res.status(402).json({ error: "Open invoice" });
       }
 
       try {
@@ -239,7 +238,7 @@ keys
       }
     }
     // New customer -> create customer first
-    else  {
+    else {
       try {
         const customer = await stripe.customers.create({
           source: token.id,
@@ -249,7 +248,7 @@ keys
           },
         });
         customer_id = customer.id;
-      } catch  (err) {
+      } catch (err) {
         // probably insufficient funds
         return res.status(402).json(err);
       }
@@ -266,7 +265,7 @@ keys
       },
     });
 
-    await db.raw(
+    await raw(
       `
         INSERT INTO api_keys (account_id, api_key, customer_id, subscription_id)
         VALUES (?, ?, ?, ?)
@@ -285,7 +284,7 @@ keys
     );
 
     // Add the key to Redis so that it works immediately
-    redis.sadd("api_keys", apiKey, (err) => {
+    sadd("api_keys", apiKey, (err) => {
       if (err) {
         throw err;
       }
@@ -324,4 +323,4 @@ keys
     res.sendStatus(200);
   });
 
-module.exports = keys;
+export default keys;

@@ -1,11 +1,11 @@
-const request = require("request");
-const async = require("async");
-const config = require("../config");
+import request from "request";
+import { eachSeries } from "async";
+import { STEAM_API_KEY } from "../config";
 
 const output = [];
 
-async.eachSeries(
-  config.STEAM_API_KEY.split(","),
+eachSeries(
+  STEAM_API_KEY.split(","),
   (key, cb) => {
     setTimeout(() => {
       request(

@@ -1,4 +1,4 @@
-const cassandra = require("../store/cassandra");
+import { execute } from "../store/cassandra";
 
 const myArgs = process.argv.slice(2);
 
@@ -10,7 +10,7 @@ const test = async () => {
   const query = "SELECT match_id FROM player_matches WHERE match_id = ?";
   for (let i = Number(myArgs[0]); i < Number(myArgs[1]); i++) {
     try {
-      const result = await cassandra.execute(query, [i], {
+      const result = await execute(query, [i], {
         prepare: true,
         fetchSize: 24,
         autoPage: true,

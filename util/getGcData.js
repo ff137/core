@@ -2,15 +2,15 @@
  * Issues a request to the retriever to get GC (Game Coordinator) data for a match
  * Calls back with an object containing the GC data
  * */
-const moment = require("moment");
-const zlib = require("zlib");
-const utility = require("../util/utility");
-const config = require("../config");
-const queries = require("../store/queries");
-const db = require("../store/db");
-const redis = require("../store/redis");
+import moment from "moment";
+import { gunzipSync, gzipSync } from "zlib";
+import { RETRIEVER_SECRET } from "../config";
+import db from "../store/db";
+import queries, { upsert } from "../store/queries";
+import redis, { del, expireat, get, setex, zincrby } from "../store/redis";
+import utility, { getRetrieverArr } from "../util/utility";
 
-const secret = config.RETRIEVER_SECRET;
+const secret = RETRIEVER_SECRET;
 const { getData, redisCount } = utility;
 const { insertMatch } = queries;
 
@@ -50,7 +50,7 @@ function handleGcData(match, body, cb) {
         return cb(err);
       }
       // Persist GC data to database
-      return queries.upsert(
+      return upsert(
         db,
         "match_gcdata",
         gcdata,
@@ -65,10 +65,10 @@ function handleGcData(match, body, cb) {
   );
 }
 
-redis.del("nonRetryable");
+del("nonRetryable");
 
 function getGcDataFromRetriever(match, cb) {
-  const retrieverArr = utility.getRetrieverArr(match.useGcDataArr);
+  const retrieverArr = getRetrieverArr(match.useGcDataArr);
   // make array of retriever urls and use a random one on each retry
   let urls = retrieverArr.map(
     (r) => `http://${r}?key=${secret}&match_id=${match.match_id}`
@@ -90,16 +90,16 @@ function getGcDataFromRetriever(match, cb) {
       }
       // Count retriever calls
       redisCount(redis, "retriever");
-      redis.zincrby("retrieverCounts", 1, metadata.hostname);
-      redis.expireat(
+      zincrby("retrieverCounts", 1, metadata.hostname);
+      expireat(
         "retrieverCounts",
         moment().startOf("hour").add(1, "hour").format("X")
       );
 
-      redis.setex(
+      setex(
         `gcdata:${match.match_id}`,
         60 * 60,
-        zlib.gzipSync(JSON.stringify(body))
+        gzipSync(JSON.stringify(body))
       );
       // TODO add discovered account_ids to database and fetch account data/rank medal
       return handleGcData(match, body, cb);
@@ -107,18 +107,18 @@ function getGcDataFromRetriever(match, cb) {
   );
 }
 
-module.exports = function getGcData(match, cb) {
+export default function getGcData(match, cb) {
   const matchId = match.match_id;
   if (!matchId || Number.isNaN(Number(matchId)) || Number(matchId) <= 0) {
     return cb(new Error("invalid match_id"));
   }
   //return getGcDataFromRetriever(match, cb);
-  return redis.get(Buffer.from(`gcdata:${match.match_id}`), (err, body) => {
+  return get(Buffer.from(`gcdata:${match.match_id}`), (err, body) => {
     if (err) {
       return cb(err);
     }
     if (body) {
-      return handleGcData(match, JSON.parse(zlib.gunzipSync(body)), cb);
+      return handleGcData(match, JSON.parse(gunzipSync(body)), cb);
     }
     return getGcDataFromRetriever(match, cb);
   });

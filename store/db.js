@@ -1,16 +1,16 @@
 /**
  * Interface to PostgreSQL client
  * */
-const pg = require("pg");
-const knex = require("knex");
-const config = require("../config");
+import knex from "knex";
+import { types } from "pg";
+import { POSTGRES_URL } from "../config";
 
 // remember: all values returned from the server are either NULL or a string
-pg.types.setTypeParser(20, (val) => (val === null ? null : parseInt(val, 10)));
-console.log("connecting %s", config.POSTGRES_URL);
+types.setTypeParser(20, (val) => (val === null ? null : parseInt(val, 10)));
+console.log("connecting %s", POSTGRES_URL);
 const db = knex({
   client: "pg",
-  connection: config.POSTGRES_URL,
+  connection: POSTGRES_URL,
   pool: {
     // min: 2,
     // max: 20,
@@ -26,4 +26,4 @@ const db = knex({
 // db.on('query-error', (err) => {
 //   console.error(err);
 // });
-module.exports = db;
+export default db;

@@ -1,12 +1,11 @@
-const JSONStream = require("JSONStream");
-const db = require("../store/db");
-const utility = require("../util/utility");
-const compute = require("../util/compute");
+import { parse } from "JSONStream";
+import { select } from "../store/db";
+import { mergeObjects } from "../util/utility";
+import { count_words } from "../util/compute";
 
 const args = process.argv.slice(2);
 const limit = Number(args[0]) || 1;
-const stream = db
-  .select("chat")
+const stream = select("chat")
   .from("matches")
   .where("version", ">", "0")
   .limit(limit)
@@ -17,7 +16,7 @@ stream.on("end", () => {
   console.log(JSON.stringify(counts));
   process.exit(0);
 });
-stream.pipe(JSONStream.parse());
+stream.pipe(parse());
 stream.on("data", (match) => {
-  utility.mergeObjects(counts, compute.count_words(match));
+  mergeObjects(counts, count_words(match));
 });

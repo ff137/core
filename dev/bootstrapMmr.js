@@ -1,11 +1,10 @@
-const JSONStream = require("JSONStream");
-const db = require("../store/db");
+import { parse } from "JSONStream";
+import { raw } from "../store/db";
 
 const args = process.argv.slice(2);
 const startId = Number(args[0]) || 0;
 let conc = 0;
-const stream = db
-  .raw(
+const stream = raw(
     `
 SELECT pr.account_id, solo_competitive_rank from player_ratings pr
 JOIN
@@ -29,7 +28,7 @@ function exit(err) {
 }
 
 stream.on("end", exit);
-stream.pipe(JSONStream.parse());
+stream.pipe(parse());
 stream.on("data", (player) => {
   conc += 1;
   if (conc > 10) {

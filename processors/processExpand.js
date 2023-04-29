@@ -639,4 +639,4 @@ function processExpand(entries, meta) {
   }
   return output;
 }
-module.exports = processExpand;
+export default processExpand;

@@ -1,10 +1,10 @@
 /**
  * Worker to fetch GC (Game Coordinator) data for matches
  * */
-const getGcData = require("../util/getGcData");
-const queue = require("../store/queue");
-const config = require("../config");
-const utility = require("../util/utility");
+import { GCDATA_PARALLELISM } from "../config";
+import { runQueue } from "../store/queue";
+import getGcData from "../util/getGcData";
+import utility from "../util/utility";
 
 const { getRetrieverArr } = utility;
 const retrieverArr = getRetrieverArr();
@@ -14,8 +14,8 @@ function processGcData(job, cb) {
   getGcData(job, cb);
 }
 
-queue.runQueue(
+runQueue(
   "gcQueue",
-  Number(config.GCDATA_PARALLELISM) * retrieverArr.length,
+  Number(GCDATA_PARALLELISM) * retrieverArr.length,
   processGcData
 );

@@ -4,29 +4,29 @@
  * Main test script to run tests
  * */
 process.env.NODE_ENV = "test";
-const async = require("async");
-const nock = require("nock");
-const assert = require("assert");
-const supertest = require("supertest");
-const stripeLib = require("stripe");
-const pg = require("pg");
-const fs = require("fs");
-const cassandraDriver = require("cassandra-driver");
-const swaggerParser = require("@apidevtools/swagger-parser");
-const config = require("../config");
-const redis = require("../store/redis");
-// const utility = require('../util/utility');
-const detailsApi = require("./data/details_api.json");
-const summariesApi = require("./data/summaries_api.json");
-const historyApi = require("./data/history_api.json");
-const heroesApi = require("./data/heroes_api.json");
-const leaguesApi = require("./data/leagues_api.json");
-const retrieverPlayer = require("./data/retriever_player.json");
-const detailsApiPro = require("./data/details_api_pro.json");
-const spec = require("../routes/spec");
+import { validate as _validate } from "@apidevtools/swagger-parser";
+import assert, { deepStrictEqual, equal, fail, notEqual } from "assert";
+import { eachSeries, mapSeries, series, timesSeries } from "async";
+import { Client } from "cassandra-driver";
+import { readFileSync } from "fs";
+import nock from "nock";
+import { Pool } from "pg";
+import stripeLib from "stripe";
+import supertest from "supertest";
+import { API_FREE_LIMIT, ENABLE_API_LIMIT, INIT_CASSANDRA_HOST, INIT_POSTGRES_HOST, POSTGRES_URL, RETRIEVER_HOST, STRIPE_SECRET } from "../config";
+import { flushdb, hgetall, multi, sismember } from "../store/redis";
+import spec from "../routes/spec";
+import detailsApi, { result } from "./data/details_api.json";
+import { result as _result } from "./data/details_api_pro.json";
+import heroesApi from "./data/heroes_api.json";
+import historyApi from "./data/history_api.json";
+import leaguesApi from "./data/leagues_api.json";
+import retrieverPlayer from "./data/retriever_player.json";
+import summariesApi, { response } from "./data/summaries_api.json";
+// import utility from '../util/utility';
 
-const initPostgresHost = `postgres://postgres:postgres@${config.INIT_POSTGRES_HOST}/postgres`;
-const initCassandraHost = config.INIT_CASSANDRA_HOST;
+const initPostgresHost = `postgres://postgres:postgres@${INIT_POSTGRES_HOST}/postgres`;
+const initCassandraHost = INIT_CASSANDRA_HOST;
 
 // these are loaded later, as the database needs to be created when these are required
 let db;
@@ -62,22 +62,22 @@ nock("http://api.steampowered.com")
   .query(true)
   .reply(200, leaguesApi);
 // fake mmr response
-nock(`http://${config.RETRIEVER_HOST}`)
+nock(`http://${RETRIEVER_HOST}`)
   .get("/?account_id=88367253")
   .reply(200, retrieverPlayer);
 before(function setup(done) {
   this.timeout(60000);
-  async.series(
+  series(
     [
       function initPostgres(cb) {
-        const pool = new pg.Pool({
+        const pool = new Pool({
           connectionString: initPostgresHost,
         });
         pool.connect((err, client) => {
           if (err) {
             return cb(err);
           }
-          return async.series(
+          return series(
             [
               function drop(cb) {
                 console.log("drop postgres test database");
@@ -88,15 +88,15 @@ before(function setup(done) {
                 client.query("CREATE DATABASE yasp_test", cb);
               },
               function tables(cb) {
-                const pool2 = new pg.Pool({
-                  connectionString: config.POSTGRES_URL,
+                const pool2 = new Pool({
+                  connectionString: POSTGRES_URL,
                 });
                 pool2.connect((err, client2) => {
                   if (err) {
                     return cb(err);
                   }
                   console.log("create postgres test tables");
-                  const query = fs.readFileSync(
+                  const query = readFileSync(
                     "./sql/create_tables.sql",
                     "utf8"
                   );
@@ -117,11 +117,11 @@ before(function setup(done) {
         });
       },
       function initCassandra(cb) {
-        const client = new cassandraDriver.Client({
+        const client = new Client({
           contactPoints: [initCassandraHost],
           localDataCenter: "datacenter1",
         });
-        async.series(
+        series(
           [
             function drop(cb) {
               console.log("drop cassandra test keyspace");
@@ -137,9 +137,8 @@ before(function setup(done) {
             function tables(cb) {
               cassandra = require("../store/cassandra");
               console.log("create cassandra test tables");
-              async.eachSeries(
-                fs
-                  .readFileSync("./sql/create_tables.cql", "utf8")
+              eachSeries(
+                readFileSync("./sql/create_tables.cql", "utf8")
                   .split(";")
                   .filter((cql) => cql.length > 1),
                 (cql, cb) => {
@@ -155,10 +154,10 @@ before(function setup(done) {
       function initElasticsearch(cb) {
         console.log("Create Elasticsearch Mapping");
         const mapping = JSON.parse(
-          fs.readFileSync("./elasticsearch/index.json")
+          readFileSync("./elasticsearch/index.json")
         );
         const { es } = require("../store/elasticsearch");
-        async.series(
+        series(
           [
             (cb) => {
               es.indices.delete(
@@ -222,7 +221,7 @@ before(function setup(done) {
       },
       function wipeRedis(cb) {
         console.log("wiping redis");
-        redis.flushdb((err, success) => {
+        flushdb((err, success) => {
           console.log(err, success);
           cb(err);
         });
@@ -238,8 +237,8 @@ before(function setup(done) {
       },
       function loadMatches(cb) {
         console.log("loading matches");
-        async.mapSeries(
-          [detailsApi.result, detailsApiPro.result, detailsApiPro.result],
+        mapSeries(
+          [result, _result, _result],
           (m, cb) => {
             queries.insertMatch(
               m,
@@ -256,8 +255,8 @@ before(function setup(done) {
       },
       function loadPlayers(cb) {
         console.log("loading players");
-        async.mapSeries(
-          summariesApi.response.players,
+        mapSeries(
+          response.players,
           (p, cb) => {
             queries.insertPlayer(db, p, true, cb);
           },
@@ -278,14 +277,14 @@ describe("swagger schema", function testSwaggerSchema() {
       },
     };
     // We stringify and imediately parse the object in order to remove the route() and func() properties, which arent a part of the OpenAPI spec
-    swaggerParser.validate(
+    _validate(
       JSON.parse(JSON.stringify(spec)),
       validOpts,
       (err) => {
         if (!err) {
           assert(!err);
         } else {
-          assert.fail(err.message);
+          fail(err.message);
         }
         cb();
       }
@@ -295,11 +294,11 @@ describe("swagger schema", function testSwaggerSchema() {
 describe("replay parse", function testReplayParse() {
   this.timeout(120000);
   const tests = {
-    "1781962623_1.dem": detailsApi.result,
+    "1781962623_1.dem": result,
   };
   Object.keys(tests).forEach((key) => {
     const match = tests[key];
-    nock(`http://${config.RETRIEVER_HOST}`)
+    nock(`http://${RETRIEVER_HOST}`)
       .get("/")
       .query(true)
       .reply(200, {
@@ -368,7 +367,7 @@ describe("api", () => {
           return cb(err);
         }
         const spec = res.body;
-        return async.eachSeries(
+        return eachSeries(
           Object.keys(spec.paths),
           (path, cb) => {
             const replacedPath = path
@@ -379,7 +378,7 @@ describe("api", () => {
               .replace(/{league_id}/, 1)
               .replace(/{field}/, "kills")
               .replace(/{resource}/, "heroes");
-            async.eachSeries(
+            eachSeries(
               Object.keys(spec.paths[path]),
               (verb, cb) => {
                 if (
@@ -396,11 +395,11 @@ describe("api", () => {
                       console.error(verb, replacedPath, res.body);
                     }
                     if (replacedPath.startsWith("/admin")) {
-                      assert.equal(res.statusCode, 403);
+                      equal(res.statusCode, 403);
                     } else if (replacedPath.startsWith("/subscribeSuccess")) {
-                      assert.equal(res.statusCode, 400);
+                      equal(res.statusCode, 400);
                     } else {
-                      assert.equal(res.statusCode, 200);
+                      equal(res.statusCode, 200);
                     }
                     return cb(err);
                   });
@@ -433,7 +432,7 @@ describe("api management", () => {
     supertest(app)
       .get("/keys")
       .then((res) => {
-        assert.equal(res.statusCode, 403);
+        equal(res.statusCode, 403);
         return done();
       })
       .catch((err) => done(err));
@@ -443,8 +442,8 @@ describe("api management", () => {
     supertest(app)
       .get("/keys?loggedin=1")
       .then((res) => {
-        assert.equal(res.statusCode, 200);
-        assert.deepStrictEqual(res.body, {});
+        equal(res.statusCode, 200);
+        deepStrictEqual(res.body, {});
         return done();
       })
       .catch((err) => done(err));
@@ -461,7 +460,7 @@ describe("api management", () => {
         },
       })
       .then((res) => {
-        assert.equal(res.statusCode, 200);
+        equal(res.statusCode, 200);
 
         supertest(app)
           .get("/keys?loggedin=1")
@@ -469,19 +468,19 @@ describe("api management", () => {
             if (err) {
               done(err);
             } else {
-              assert.equal(res.statusCode, 200);
-              assert.equal(res.body.customer.credit_brand, "Visa");
-              assert.notEqual(res.body.customer.api_key, null);
-              assert.equal(Array.isArray(res.body.openInvoices), true);
-              assert.equal(Array.isArray(res.body.usage), true);
-              redis.sismember(
+              equal(res.statusCode, 200);
+              equal(res.body.customer.credit_brand, "Visa");
+              notEqual(res.body.customer.api_key, null);
+              equal(Array.isArray(res.body.openInvoices), true);
+              equal(Array.isArray(res.body.usage), true);
+              sismember(
                 "api_keys",
                 res.body.customer.api_key,
                 (err, resp) => {
                   if (err) {
                     return done(err);
                   }
-                  assert.equal(resp, 1);
+                  equal(resp, 1);
                   return done();
                 }
               );
@@ -496,8 +495,8 @@ describe("api management", () => {
     supertest(app)
       .get("/keys?loggedin=1")
       .then((res) => {
-        assert.equal(res.statusCode, 200);
-        assert.equal(res.body.customer.credit_brand, "Visa");
+        equal(res.statusCode, 200);
+        equal(res.body.customer.credit_brand, "Visa");
 
         const previousCredit = res.body.customer.credit_brand;
 
@@ -510,7 +509,7 @@ describe("api management", () => {
             },
           })
           .then((res) => {
-            assert.equal(res.statusCode, 200);
+            equal(res.statusCode, 200);
 
             db.from("api_keys")
               .where({
@@ -520,8 +519,8 @@ describe("api management", () => {
                 if (res2.length === 0) {
                   throw Error("No API record found");
                 }
-                assert.equal(res2[0].customer_id, this.previousCustomer);
-                assert.equal(res2[0].subscription_id, this.previousSub);
+                equal(res2[0].customer_id, this.previousCustomer);
+                equal(res2[0].subscription_id, this.previousSub);
                 supertest(app)
                   .get("/keys?loggedin=1")
                   .end((err, res) => {
@@ -529,13 +528,13 @@ describe("api management", () => {
                       return done(err);
                     }
 
-                    assert.equal(res.statusCode, 200);
-                    assert.equal(
+                    equal(res.statusCode, 200);
+                    equal(
                       res.body.customer.credit_brand,
 
                       previousCredit
                     );
-                    assert.equal(res.body.customer.api_key, this.previousKey);
+                    equal(res.body.customer.api_key, this.previousKey);
                     return done();
                   });
               })
@@ -557,14 +556,14 @@ describe("api management", () => {
         },
       })
       .then((res) => {
-        assert.equal(res.statusCode, 200);
+        equal(res.statusCode, 200);
 
         supertest(app)
           .get("/keys?loggedin=1")
           .then((res) => {
-            assert.equal(res.statusCode, 200);
-            assert.equal(res.body.customer.credit_brand, "MasterCard");
-            assert.equal(res.body.customer.api_key, this.previousKey);
+            equal(res.statusCode, 200);
+            equal(res.body.customer.credit_brand, "MasterCard");
+            equal(res.body.customer.api_key, this.previousKey);
             db.from("api_keys")
               .where({
                 account_id: 1,
@@ -573,8 +572,8 @@ describe("api management", () => {
                 if (res.length === 0) {
                   throw Error("No API record found");
                 }
-                assert.equal(res2[0].customer_id, this.previousCustomer);
-                assert.equal(res2[0].subscription_id, this.previousSub);
+                equal(res2[0].customer_id, this.previousCustomer);
+                equal(res2[0].subscription_id, this.previousSub);
                 return done();
               })
               .catch((err) => done(err));
@@ -585,17 +584,17 @@ describe("api management", () => {
   });
   it("delete should set is_deleted and remove from redis but not change other db fields", function testDeleteOnlyModifiesKey(done) {
     this.timeout(5000);
-    assert.notEqual(this.previousKey, null);
-    assert.equal(this.previousIsCanceled, undefined);
-    redis.sismember("api_keys", this.previousKey, (err, resp) => {
+    notEqual(this.previousKey, null);
+    equal(this.previousIsCanceled, undefined);
+    sismember("api_keys", this.previousKey, (err, resp) => {
       if (err) {
         done(err);
       } else {
-        assert.equal(resp, 1);
+        equal(resp, 1);
         supertest(app)
           .delete("/keys?loggedin=1")
           .then((res) => {
-            assert.equal(res.statusCode, 200);
+            equal(res.statusCode, 200);
 
             db.from("api_keys")
               .where({
@@ -605,15 +604,15 @@ describe("api management", () => {
                 if (res2.length === 0) {
                   throw Error("No API record found");
                 }
-                assert.equal(res2[0].api_key, this.previousKey);
-                assert.equal(res2[0].customer_id, this.previousCustomer);
-                assert.equal(res2[0].subscription_id, this.previousSub);
-                assert.equal(res2[0].is_canceled, true);
-                redis.sismember("api_keys", this.previousKey, (err, resp) => {
+                equal(res2[0].api_key, this.previousKey);
+                equal(res2[0].customer_id, this.previousCustomer);
+                equal(res2[0].subscription_id, this.previousSub);
+                equal(res2[0].is_canceled, true);
+                sismember("api_keys", this.previousKey, (err, resp) => {
                   if (err) {
                     return done(err);
                   }
-                  assert.equal(resp, 0);
+                  equal(resp, 0);
                   return done();
                 });
               })
@@ -635,7 +634,7 @@ describe("api management", () => {
         },
       })
       .then((res) => {
-        assert.equal(res.statusCode, 200);
+        equal(res.statusCode, 200);
 
         db.from("api_keys")
           .where({
@@ -646,8 +645,8 @@ describe("api management", () => {
             if (res2.length === 0) {
               throw Error("No API record found");
             }
-            assert.equal(res2[0].customer_id, this.previousCustomer);
-            assert.notEqual(res2[0].subscription_id, this.previousSub);
+            equal(res2[0].customer_id, this.previousCustomer);
+            notEqual(res2[0].subscription_id, this.previousSub);
             supertest(app)
               .get("/keys?loggedin=1")
               .end((err, res) => {
@@ -655,10 +654,10 @@ describe("api management", () => {
                   return done(err);
                 }
 
-                assert.equal(res.statusCode, 200);
-                assert.equal(res.body.customer.credit_brand, "Discover");
-                assert.notEqual(res.body.customer.api_key, null);
-                assert.notEqual(res.body.customer.api_key, this.previousKey);
+                equal(res.statusCode, 200);
+                equal(res.body.customer.credit_brand, "Discover");
+                notEqual(res.body.customer.api_key, null);
+                notEqual(res.body.customer.api_key, this.previousKey);
                 return done();
               });
           })
@@ -672,8 +671,8 @@ describe("api management", () => {
     supertest(app)
     .delete("/keys?loggedin=1")
     .then(async (res) => {
-      assert.equal(res.statusCode, 200);
-      const stripe = stripeLib(config.STRIPE_SECRET);
+      equal(res.statusCode, 200);
+      const stripe = stripeLib(STRIPE_SECRET);
  
       await stripe.invoiceItems.create({
         customer: this.previousCustomer,
@@ -696,8 +695,8 @@ describe("api management", () => {
           email: "test@test.com",
         },
       }).then(res => {
-        assert.equal(res.statusCode, 402);
-        assert.equal(res.body.error, 'Open invoice');
+        equal(res.statusCode, 402);
+        equal(res.body.error, 'Open invoice');
 
         supertest(app)
           .get("/keys?loggedin=1")
@@ -706,16 +705,16 @@ describe("api management", () => {
               return done(err);
             }
 
-            assert.equal(res.statusCode, 200);
-            assert.equal(res.body.customer, null);
-            assert.equal(res.body.openInvoices[0].id, invoice.id);
-            assert.equal(res.body.openInvoices[0].amountDue, 12300);
+            equal(res.statusCode, 200);
+            equal(res.body.customer, null);
+            equal(res.body.openInvoices[0].id, invoice.id);
+            equal(res.body.openInvoices[0].amountDue, 12300);
             db.from("api_keys")
               .where({
                 account_id: 1,
                 is_canceled: null
               }).then(res => {
-                assert.equal(res.length, 0)
+                equal(res.length, 0)
                 return done();
               })
             });
@@ -726,10 +725,9 @@ describe("api management", () => {
 });
 describe("api limits", () => {
   before((done) => {
-    config.ENABLE_API_LIMIT = true;
-    config.API_FREE_LIMIT = 10;
-    redis
-      .multi()
+    ENABLE_API_LIMIT = true;
+    API_FREE_LIMIT = 10;
+    multi()
       .del("user_usage_count")
       .del("usage_count")
       .sadd("api_keys", "KEY")
@@ -743,7 +741,7 @@ describe("api limits", () => {
   });
 
   function testWhiteListedRoutes(done, key) {
-    async.eachSeries(
+    eachSeries(
       [
         `/api${key}`, // Docs
         `/api/metadata${key}`, // Login status
@@ -759,7 +757,7 @@ describe("api limits", () => {
               return cb(err);
             }
 
-            assert.notEqual(res.statusCode, 429);
+            notEqual(res.statusCode, 429);
             return cb();
           });
       },
@@ -768,7 +766,7 @@ describe("api limits", () => {
   }
 
   function testRateCheckedRoute(done) {
-    async.timesSeries(
+    timesSeries(
       10,
       (i, cb) => {
         setTimeout(() => {
@@ -779,7 +777,7 @@ describe("api limits", () => {
                 return cb(err);
               }
 
-              assert.equal(res.statusCode, 200);
+              equal(res.statusCode, 200);
               return cb();
             });
         }, i * 300);
@@ -805,8 +803,8 @@ describe("api limits", () => {
                 if (err) {
                   done(err);
                 }
-                assert.equal(res.statusCode, 429);
-                assert.equal(res.body.error, "monthly api limit exceeded");
+                equal(res.statusCode, 429);
+                equal(res.body.error, "monthly api limit exceeded");
 
                 testWhiteListedRoutes(done, "");
               });
@@ -818,7 +816,7 @@ describe("api limits", () => {
 
   it("should be able to make more than 10 calls when using API KEY", function testAPIKeyLimitsAndCounting(done) {
     this.timeout(25000);
-    async.timesSeries(
+    timesSeries(
       25,
       (i, cb) => {
         supertest(app)
@@ -828,7 +826,7 @@ describe("api limits", () => {
               return cb(err);
             }
 
-            assert.equal(res.statusCode, 200);
+            equal(res.statusCode, 200);
             return cb();
           });
       },
@@ -845,7 +843,7 @@ describe("api limits", () => {
                 if (err) {
                   done(err);
                 }
-                assert.equal(res.statusCode, 429);
+                equal(res.statusCode, 429);
 
                 // Try a 500. Should not increment usage.
                 supertest(app)
@@ -854,14 +852,14 @@ describe("api limits", () => {
                     if (err) {
                       done(err);
                     }
-                    assert.equal(res.statusCode, 500);
-                    redis.hgetall("usage_count", (err, res) => {
+                    equal(res.statusCode, 500);
+                    hgetall("usage_count", (err, res) => {
                       if (err) {
                         done(err);
                       } else {
                         const keys = Object.keys(res);
-                        assert.equal(keys.length, 1);
-                        assert.equal(Number(res[keys[0]]), 25);
+                        equal(keys.length, 1);
+                        equal(Number(res[keys[0]]), 25);
                         done();
                       }
                     });
@@ -874,8 +872,8 @@ describe("api limits", () => {
   });
 
   after(() => {
-    config.ENABLE_API_LIMIT = false;
-    config.API_FREE_LIMIT = 50000;
+    ENABLE_API_LIMIT = false;
+    API_FREE_LIMIT = 50000;
   });
 });
 /*

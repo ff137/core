@@ -1,13 +1,13 @@
-const vdf = require("simple-vdf");
-const async = require("async");
-const db = require("../store/db");
-const utility = require("../util/utility");
-const queries = require("../store/queries");
+import { eachLimit } from "async";
+import { parse } from "simple-vdf";
+import db from "../store/db";
+import { upsert } from "../store/queries";
+import utility, { generateJob, getData } from "../util/utility";
 
 const { invokeInterval, cleanItemSchema } = utility;
 
 function doCosmetics(cb) {
-  utility.getData(
+  getData(
     {
       url: "https://raw.githubusercontent.com/SteamDatabase/GameTracking-Dota2/master/game/dota/pak01_dir/scripts/items/items_game.txt",
       raw: true,
@@ -16,9 +16,9 @@ function doCosmetics(cb) {
       if (err) {
         return cb(err);
       }
-      const itemData = vdf.parse(cleanItemSchema(body));
+      const itemData = parse(cleanItemSchema(body));
       console.log(Object.keys(itemData.items_game.items).length);
-      return async.eachLimit(
+      return eachLimit(
         Object.keys(itemData.items_game.items),
         10,
         (itemId, cb) => {
@@ -31,7 +31,7 @@ function doCosmetics(cb) {
 
           function insert(cb) {
             // console.log(item);
-            return queries.upsert(
+            return upsert(
               db,
               "cosmetics",
               item,
@@ -51,9 +51,9 @@ function doCosmetics(cb) {
           if (item.image_inventory) {
             const spl = item.image_inventory.split("/");
             const iconname = spl[spl.length - 1];
-            return utility.getData(
+            return getData(
               {
-                url: utility.generateJob("api_item_icon", {
+                url: generateJob("api_item_icon", {
                   iconname,
                 }).url,
                 noRetry: true,

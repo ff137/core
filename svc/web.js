@@ -2,36 +2,36 @@
  * Worker serving as main web application
  * Serves web/API requests
  * */
-const request = require("request");
-const compression = require("compression");
-const session = require("cookie-session");
-const moment = require("moment");
-const express = require("express");
-// const requestIp = require('request-ip');
-const passport = require("passport");
-const SteamStrategy = require("passport-steam").Strategy;
-const cors = require("cors");
-const keys = require("../routes/keyManagement");
-const webhooks = require("../routes/webhookManagement");
-const api = require("../routes/api");
-const queries = require("../store/queries");
-const db = require("../store/db");
-const redis = require("../store/redis");
-const utility = require("../util/utility");
-const config = require("../config");
-const bodyParser = require("body-parser");
-const stripe = require("stripe")(config.STRIPE_SECRET);
+import compression from "compression";
+import session from "cookie-session";
+import express from "express";
+import moment from "moment";
+import request from "request";
+// import requestIp from 'request-ip';
+import { json } from "body-parser";
+import cors from "cors";
+import { session as _session, authenticate, deserializeUser, initialize, serializeUser, use } from "passport";
+import { Strategy as SteamStrategy } from "passport-steam";
+import { API_FREE_LIMIT, API_KEY_PER_MIN_LIMIT, COOKIE_DOMAIN, ENABLE_API_LIMIT, FRONTEND_PORT, NODE_ENV, NO_API_KEY_PER_MIN_LIMIT, PORT, ROOT_URL, SESSION_SECRET, STEAM_API_KEY, STRIPE_SECRET, UI_HOST } from "../config";
+import api from "../routes/api";
+import keys from "../routes/keyManagement";
+import webhooks from "../routes/webhookManagement";
+import db, { raw } from "../store/db";
+import { insertPlayer } from "../store/queries";
+import redis, { multi as _multi, expireat, lpush, ltrim, sismember, zadd, zincrby } from "../store/redis";
+import utility, { getEndOfMonth, getStartOfBlockMinutes } from "../util/utility";
+const stripe = require("stripe")(STRIPE_SECRET);
 
 const { redisCount } = utility;
 
 const app = express();
-const apiKey = config.STEAM_API_KEY.split(",")[0];
-const host = config.ROOT_URL;
+const apiKey = STEAM_API_KEY.split(",")[0];
+const host = ROOT_URL;
 
 const sessOptions = {
-  domain: config.COOKIE_DOMAIN,
+  domain: COOKIE_DOMAIN,
   maxAge: 52 * 7 * 24 * 60 * 60 * 1000,
-  secret: config.SESSION_SECRET,
+  secret: SESSION_SECRET,
 };
 
 const whitelistedPaths = [
@@ -51,15 +51,15 @@ const pathCosts = {
 };
 
 // PASSPORT config
-passport.serializeUser((user, done) => {
+serializeUser((user, done) => {
   done(null, user.account_id);
 });
-passport.deserializeUser((accountId, done) => {
+deserializeUser((accountId, done) => {
   done(null, {
     account_id: accountId,
   });
 });
-passport.use(
+use(
   new SteamStrategy(
     {
       providerURL: "https://steamcommunity.com/openid",
@@ -70,7 +70,7 @@ passport.use(
     (identifier, profile, cb) => {
       const player = profile._json;
       player.last_login = new Date();
-      queries.insertPlayer(db, player, true, (err) => {
+      insertPlayer(db, player, true, (err) => {
         if (err) {
           return cb(err);
         }
@@ -99,13 +99,13 @@ app.route("/healthz").get((req, res) => {
 });
 // Session/Passport middleware
 app.use(session(sessOptions));
-app.use(passport.initialize());
-app.use(passport.session());
+app.use(initialize());
+app.use(_session());
 // Get client IP to use for rate limiting;
 // app.use(requestIp.mw());
 
 // Dummy User ID for testing
-if (config.NODE_ENV === "test") {
+if (NODE_ENV === "test") {
   app.use((req, res, cb) => {
     if (req.query.loggedin) {
       req.user = {
@@ -128,8 +128,8 @@ app.use((req, res, cb) => {
     (req.headers.authorization &&
       req.headers.authorization.replace("Bearer ", "")) ||
     req.query.api_key;
-  if (config.ENABLE_API_LIMIT && apiKey) {
-    redis.sismember("api_keys", apiKey, (err, resp) => {
+  if (ENABLE_API_LIMIT && apiKey) {
+    sismember("api_keys", apiKey, (err, resp) => {
       if (err) {
         cb(err);
       } else {
@@ -154,17 +154,16 @@ app.use((req, res, cb) => {
         req.headers.authorization.replace("Bearer ", "")) ||
       req.query.api_key;
     res.locals.usageIdentifier = requestAPIKey;
-    rateLimit = config.API_KEY_PER_MIN_LIMIT;
+    rateLimit = API_KEY_PER_MIN_LIMIT;
     // console.log('[KEY] %s visit %s, ip %s', requestAPIKey, req.originalUrl, ip);
   } else {
     res.locals.usageIdentifier = ip;
-    rateLimit = config.NO_API_KEY_PER_MIN_LIMIT;
+    rateLimit = NO_API_KEY_PER_MIN_LIMIT;
     // console.log('[USER] %s visit %s, ip %s', req.user ? req.user.account_id : 'anonymous', req.originalUrl, ip);
   }
-  const multi = redis
-    .multi()
+  const multi = _multi()
     .hincrby("rate_limit", res.locals.usageIdentifier, pathCosts[req.path] || 1)
-    .expireat("rate_limit", utility.getStartOfBlockMinutes(1, 1));
+    .expireat("rate_limit", getStartOfBlockMinutes(1, 1));
 
   if (!res.locals.isAPIRequest) {
     multi.zscore("user_usage_count", res.locals.usageIdentifier); // not API request so check previous usage.
@@ -183,22 +182,22 @@ app.use((req, res, cb) => {
     if (!res.locals.isAPIRequest) {
       res.set(
         "X-Rate-Limit-Remaining-Month",
-        config.API_FREE_LIMIT - Number(resp[2])
+        API_FREE_LIMIT - Number(resp[2])
       );
     }
-    if (config.NODE_ENV === "development" || config.NODE_ENV === "test") {
+    if (NODE_ENV === "development" || NODE_ENV === "test") {
       console.log("rate limit increment", resp);
     }
-    if (resp[0] > rateLimit && config.NODE_ENV !== "test") {
+    if (resp[0] > rateLimit && NODE_ENV !== "test") {
       return res.status(429).json({
         error: "rate limit exceeded",
       });
     }
     if (
-      config.ENABLE_API_LIMIT &&
+      ENABLE_API_LIMIT &&
       !whitelistedPaths.includes(req.path) &&
       !res.locals.isAPIRequest &&
-      Number(resp[2]) >= config.API_FREE_LIMIT
+      Number(resp[2]) >= API_FREE_LIMIT
     ) {
       return res.status(429).json({
         error: "monthly api limit exceeded",
@@ -214,7 +213,7 @@ app.use((req, res, cb) => {
   res.once("finish", () => {
     const timeEnd = new Date();
     const elapsed = timeEnd - timeStart;
-    if (elapsed > 2000 || config.NODE_ENV === "development") {
+    if (elapsed > 2000 || NODE_ENV === "development") {
       console.log("[SLOWLOG] %s, %s", req.originalUrl, elapsed);
     }
 
@@ -227,19 +226,19 @@ app.use((req, res, cb) => {
       ) &&
       elapsed < 10000
     ) {
-      const multi = redis.multi();
+      const multi = _multi();
       if (res.locals.isAPIRequest) {
         multi
           .hincrby("usage_count", res.locals.usageIdentifier, 1)
-          .expireat("usage_count", utility.getEndOfMonth());
+          .expireat("usage_count", getEndOfMonth());
       } else {
         multi
           .zincrby("user_usage_count", 1, res.locals.usageIdentifier)
-          .expireat("user_usage_count", utility.getEndOfMonth());
+          .expireat("user_usage_count", getEndOfMonth());
       }
 
       multi.exec((err, res) => {
-        if (config.NODE_ENV === "development" || config.NODE_ENV === "test") {
+        if (NODE_ENV === "development" || NODE_ENV === "test") {
           console.log("usage count increment", err, res);
         }
       });
@@ -250,17 +249,17 @@ app.use((req, res, cb) => {
       if (req.headers.origin === "https://www.opendota.com") {
         redisCount(redis, "api_hits_ui");
       }
-      redis.zincrby("api_paths", 1, req.path.split("/")[1] || "");
-      redis.expireat(
+      zincrby("api_paths", 1, req.path.split("/")[1] || "");
+      expireat(
         "api_paths",
         moment().startOf("hour").add(1, "hour").format("X")
       );
     }
     if (req.user && req.user.account_id) {
-      redis.zadd("visitors", moment().format("X"), req.user.account_id);
+      zadd("visitors", moment().format("X"), req.user.account_id);
     }
-    redis.lpush("load_times", elapsed);
-    redis.ltrim("load_times", 0, 9999);
+    lpush("load_times", elapsed);
+    ltrim("load_times", 0, 9999);
   });
   cb();
 });
@@ -269,7 +268,7 @@ app.use((req, res, next) => {
   if (
     req.method !== "GET" &&
     req.header("Origin") &&
-    req.header("Origin") !== config.UI_HOST
+    req.header("Origin") !== UI_HOST
   ) {
     // Make an exception for replay parse request
     if (req.method === "POST" && req.path.startsWith("/api/request/")) {
@@ -286,19 +285,19 @@ app.use(
     credentials: true,
   })
 );
-app.use(bodyParser.json());
+app.use(json());
 app.route("/login").get(
-  passport.authenticate("steam", {
+  authenticate("steam", {
     failureRedirect: "/api",
   })
 );
 app.route("/return").get(
-  passport.authenticate("steam", {
+  authenticate("steam", {
     failureRedirect: "/api",
   }),
   (req, res) => {
-    if (config.UI_HOST) {
-      return res.redirect(`${config.UI_HOST}/players/${req.user.account_id}`);
+    if (UI_HOST) {
+      return res.redirect(`${UI_HOST}/players/${req.user.account_id}`);
     }
     return res.redirect("/api");
   }
@@ -306,8 +305,8 @@ app.route("/return").get(
 app.route("/logout").get((req, res) => {
   req.logout();
   req.session = null;
-  if (config.UI_HOST) {
-    return res.redirect(config.UI_HOST);
+  if (UI_HOST) {
+    return res.redirect(UI_HOST);
   }
   return res.redirect("/api");
 });
@@ -323,18 +322,18 @@ app.route("/subscribeSuccess").get(async (req, res) => {
   const customer = await stripe.customers.retrieve(session.customer);
   const accountId = req.user.account_id;
   // associate the customer id with the steam account ID (req.user.account_id)
-  await db.raw(
+  await raw(
     "INSERT INTO subscriber(account_id, customer_id, status) VALUES (?, ?, ?) ON CONFLICT(account_id) DO UPDATE SET account_id = EXCLUDED.account_id, customer_id = EXCLUDED.customer_id, status = EXCLUDED.status",
     [accountId, customer.id, "active"]
   );
   // Send the user back to the subscribe page
-  return res.redirect(config.UI_HOST + "/subscribe");
+  return res.redirect(UI_HOST + "/subscribe");
 });
 app.route("/manageSub").post(async (req, res) => {
   if (!req.user?.account_id) {
     return res.status(400).json({ error: "no account ID" });
   }
-  const result = await db.raw(
+  const result = await raw(
     `SELECT customer_id FROM subscriber where account_id = ? AND status = 'active'`,
 
     [req.user.account_id]
@@ -365,7 +364,7 @@ app.use((req, res) =>
 app.use((err, req, res, cb) => {
   console.log("[ERR]", req.originalUrl);
   redisCount(redis, "500_error");
-  if (config.NODE_ENV === "development" || config.NODE_ENV === "test") {
+  if (NODE_ENV === "development" || NODE_ENV === "test") {
     // default express handler
     return cb(err);
   }
@@ -374,7 +373,7 @@ app.use((err, req, res, cb) => {
     error: "Internal Server Error",
   });
 });
-const port = config.PORT || config.FRONTEND_PORT;
+const port = PORT || FRONTEND_PORT;
 const server = app.listen(port, () => {
   console.log("[WEB] listening on %s", port);
 });
@@ -399,4 +398,4 @@ function gracefulShutdown() {
 process.once("SIGTERM", gracefulShutdown);
 // listen for INT signal e.g. Ctrl-C
 process.once("SIGINT", gracefulShutdown);
-module.exports = app;
+export default app;

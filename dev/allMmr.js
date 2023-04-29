@@ -1,15 +1,15 @@
-const async = require("async");
-const db = require("../store/db");
-const utility = require("../util/utility");
-const queries = require("../store/queries");
-const config = require("../config");
+import { eachLimit } from "async";
+import db, { select } from "../store/db";
+import utility from "../util/utility";
+import { insertPlayerRating } from "../store/queries";
+import { RETRIEVER_HOST, RETRIEVER_SECRET } from "../config";
 
 const { generateJob, getData } = utility;
-const retrieverArr = config.RETRIEVER_HOST.split(",");
+const retrieverArr = RETRIEVER_HOST.split(",");
 let count = 0;
 const args = process.argv.slice(2);
 const startId = Number(args[0]) || 0;
-db.select("account_id")
+select("account_id")
   .from("players")
   .where("account_id", ">", startId)
   .orderByRaw(startId ? "account_id asc" : "random()")
@@ -17,7 +17,7 @@ db.select("account_id")
     if (err) {
       process.exit(1);
     }
-    async.eachLimit(
+    eachLimit(
       players,
       5,
       (p, cb) => {
@@ -26,7 +26,7 @@ db.select("account_id")
             account_id: p.account_id,
             url: retrieverArr.map(
               (r) =>
-                `http://${r}?key=${config.RETRIEVER_SECRET}&account_id=${p.account_id}`
+                `http://${r}?key=${RETRIEVER_SECRET}&account_id=${p.account_id}`
             )[p.account_id % retrieverArr.length],
           }),
         };
@@ -46,7 +46,7 @@ db.select("account_id")
               data.account_id = job.data.payload.account_id;
               data.match_id = job.data.payload.match_id;
               data.time = new Date();
-              queries.insertPlayerRating(db, data, cb);
+              insertPlayerRating(db, data, cb);
             } else {
               cb();
             }

@@ -1,13 +1,13 @@
-const { Console } = require("console");
-const readline = require("readline");
-const processAllPlayers = require("./processAllPlayers");
-const processTeamfights = require("./processTeamfights");
-const processLogParse = require("./processLogParse");
+import { Console } from "console";
+import { createInterface } from "readline";
+import processAllPlayers from "./processAllPlayers";
+import processLogParse from "./processLogParse";
+import processTeamfights from "./processTeamfights";
 // const processUploadProps = require('../processors/processUploadProps');
-const processParsedData = require("./processParsedData");
-const processMetadata = require("./processMetadata");
-const processExpand = require("./processExpand");
-const processDraftTimings = require("./processDraftTimings");
+import processDraftTimings from "./processDraftTimings";
+import processExpand from "./processExpand";
+import processMetadata from "./processMetadata";
+import processParsedData from "./processParsedData";
 
 function getParseSchema() {
   return {
@@ -126,7 +126,7 @@ const entries = [];
 let complete = false;
 const matchId = process.argv[2];
 const doLogParse = Boolean(process.argv[3]);
-const parseStream = readline.createInterface({
+const parseStream = createInterface({
   input: process.stdin,
 });
 parseStream.on("line", (e) => {

@@ -1,11 +1,11 @@
 /**
  * File managing configuration for the application
  * */
-const dotenv = require("dotenv");
-const fs = require("fs");
+import { config } from "dotenv";
+import { existsSync } from "fs";
 
-if (fs.existsSync(".env")) {
-  dotenv.config();
+if (existsSync(".env")) {
+  config();
 }
 
 const defaults = {
@@ -25,20 +25,20 @@ const defaults = {
   ROOT_URL: "http://localhost:5000", // base url to redirect to after steam oauth login
   RETRIEVER_HOST: "localhost:5100", // Comma separated list of retriever hosts (access to Dota 2 GC data)
   GCDATA_RETRIEVER_HOST: "", // Comma separated list of retriever hosts dedicated for gcdata job
-  PARSER_HOST: "http://localhost:5600", // host of the parse server
+  PARSER_HOST: "http://172.18.0.6:5600", // host of the parse server
   UI_HOST: "", // The host of the UI, target of /logout and /return
   PROXY_URLS: "", // comma separated list of proxy urls to use
   STEAM_API_HOST: "api.steampowered.com", // comma separated list of hosts to fetch Steam API data from
-  POSTGRES_URL: "postgresql://postgres:postgres@localhost/yasp", // connection string for PostgreSQL
-  POSTGRES_TEST_URL: "postgresql://postgres:postgres@localhost/yasp_test",
-  READONLY_POSTGRES_URL: "postgresql://readonly:readonly@localhost/yasp", // readonly connection string for PostgreSQL
-  REDIS_URL: "redis://127.0.0.1:6379/0", // connection string for Redis
-  REDIS_TEST_URL: "redis://127.0.0.1:6379/1",
-  CASSANDRA_URL: "cassandra://localhost/yasp", // connection string for Cassandra
-  CASSANDRA_TEST_URL: "cassandra://localhost/yasp_test",
-  ELASTICSEARCH_URL: "localhost:9200",
-  INIT_POSTGRES_HOST: "localhost",
-  INIT_CASSANDRA_HOST: "localhost",
+  POSTGRES_URL: "postgresql://postgres:postgres@172.18.0.3/yasp", // connection string for PostgreSQL
+  POSTGRES_TEST_URL: "postgresql://postgres:postgres@172.18.0.3/yasp_test",
+  READONLY_POSTGRES_URL: "postgresql://readonly:readonly@172.18.0.3/yasp", // readonly connection string for PostgreSQL
+  REDIS_URL: "redis://172.18.0.4:6379/0", // connection string for Redis
+  REDIS_TEST_URL: "redis://172.18.0.4:6379/1",
+  CASSANDRA_URL: "cassandra://172.18.0.2/yasp", // connection string for Cassandra
+  CASSANDRA_TEST_URL: "cassandra://172.18.0.2/yasp_test",
+  ELASTICSEARCH_URL: "172.18.0.5:9200",
+  INIT_POSTGRES_HOST: "172.18.0.3",
+  INIT_CASSANDRA_HOST: "172.18.0.2",
   RETRIEVER_SECRET: "", // string to use as shared secret with retriever/parser
   SESSION_SECRET: "secret to encrypt cookies with", // string to encrypt cookies
   COOKIE_DOMAIN: "", // domain to use for the cookie.  Use e.g. '.opendota.com' to share cookie across subdomains
@@ -97,4 +97,4 @@ if (process.env.NODE_ENV === "test") {
   process.env.PARSER_PORT = 5201;
 }
 // now processes can use either process.env or config
-module.exports = process.env;
+export default process.env;

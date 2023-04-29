@@ -1,5 +1,5 @@
-const constants = require("dotaconstants");
-const utility = require("./utility");
+import constants, { cluster, heroes } from "dotaconstants";
+import utility, { getLaneFromPosData, getPatchIndex, tokenize } from "./utility";
 
 const { max, min, isRadiant } = utility;
 const { ancients } = constants;
@@ -24,7 +24,7 @@ function countWords(playerMatch, playerFilter) {
     }
   });
   chatWords = chatWords.join(" ");
-  const tokens = utility.tokenize(chatWords);
+  const tokens = tokenize(chatWords);
   // count how frequently each word occurs
   const counts = {};
   for (let i = 0; i < tokens.length; i += 1) {
@@ -44,13 +44,13 @@ function countWords(playerMatch, playerFilter) {
  * Computes additional properties from a match/player_match
  * */
 function computeMatchData(pm) {
-  const selfHero = constants.heroes[pm.hero_id];
+  const selfHero = heroes[pm.hero_id];
   // Compute patch based on start_time
   if (pm.start_time) {
-    pm.patch = utility.getPatchIndex(pm.start_time);
+    pm.patch = getPatchIndex(pm.start_time);
   }
   if (pm.cluster) {
-    pm.region = constants.cluster[pm.cluster];
+    pm.region = cluster[pm.cluster];
   }
   if (pm.player_slot !== undefined && pm.radiant_win !== undefined) {
     pm.isRadiant = isRadiant(pm);
@@ -160,7 +160,7 @@ function computeMatchData(pm) {
     pm.lane_efficiency_pct = Math.floor(pm.lane_efficiency * 100);
   }
   if (pm.lane_pos) {
-    const laneData = utility.getLaneFromPosData(pm.lane_pos, isRadiant(pm));
+    const laneData = getLaneFromPosData(pm.lane_pos, isRadiant(pm));
     pm.lane = laneData.lane;
     pm.lane_role = laneData.lane_role;
     pm.is_roaming = laneData.is_roaming;
@@ -241,6 +241,6 @@ function computeMatchData(pm) {
   }
 }
 
-module.exports = {
+export default {
   computeMatchData,
 };

@@ -1,18 +1,17 @@
 /**
  * Worker to fetch full match histories for players
  * */
-const async = require("async");
-const urllib = require("url");
-const constants = require("dotaconstants");
-const config = require("../config");
-const { redisCount, getData, generateJob } = require("../util/utility");
-const db = require("../store/db");
-const redis = require("../store/redis");
-const queue = require("../store/queue");
-const queries = require("../store/queries");
+import { eachLimit } from "async";
+import { parse as _parse, format } from "url";
+import { STEAM_API_KEY } from "../config";
+import db from "../store/db";
+import queries, { getPlayerMatches } from "../store/queries";
+import { runQueue } from "../store/queue";
+import redis from "../store/redis";
+import { generateJob, getData, redisCount } from "../util/utility";
 
 const { insertMatch } = queries;
-const apiKeys = config.STEAM_API_KEY.split(",");
+const apiKeys = STEAM_API_KEY.split(",");
 // number of api requests to send at once
 const parallelism = Math.min(20, apiKeys.length);
 
@@ -63,10 +62,10 @@ function processFullHistory(job, cb) {
         return cb(err);
       }
       // paginate through to max 500 games if necessary with start_at_match_id=
-      const parse = urllib.parse(url, true);
+      const parse = _parse(url, true);
       parse.query.start_at_match_id = startId - 1;
       parse.search = null;
-      url = urllib.format(parse);
+      url = format(parse);
       return getApiMatchPage(player, url, cb);
     });
   }
@@ -81,7 +80,7 @@ function processFullHistory(job, cb) {
   const heroArray = ["0"];
   // use steamapi via specific player history and specific hero id (up to 500 games per hero)
   player.match_ids = {};
-  return async.eachLimit(
+  return eachLimit(
     heroArray,
     parallelism,
     (heroId, cb) => {
@@ -104,7 +103,7 @@ function processFullHistory(job, cb) {
         updatePlayer(player, cb);
       } else {
         // check what matches the player is already associated with
-        queries.getPlayerMatches(
+        getPlayerMatches(
           player.account_id,
           {
             project: ["match_id"],
@@ -126,7 +125,7 @@ function processFullHistory(job, cb) {
               delete player.match_ids[matchId];
             }
             // iterate through keys, make api_details requests
-            return async.eachLimit(
+            return eachLimit(
               Object.keys(player.match_ids),
               parallelism,
               (matchId, cb) => {
@@ -163,4 +162,4 @@ function processFullHistory(job, cb) {
   );
 }
 
-queue.runQueue("fhQueue", 1, processFullHistory);
+runQueue("fhQueue", 1, processFullHistory);

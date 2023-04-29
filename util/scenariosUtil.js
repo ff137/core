@@ -1,12 +1,12 @@
-const constants = require("dotaconstants");
-const utility = require("./utility");
+import { items } from "dotaconstants";
+import utility from "./utility";
 
 const { playerWon } = utility;
 
 // all items that cost at least 1400
 const itemCost = 1400;
-const dotaItems = Object.keys(constants.items)
-  .map((k) => [constants.items[k], k])
+const dotaItems = Object.keys(items)
+  .map((k) => [items[k], k])
   .filter((x) => x[0].cost >= itemCost)
   .map((x) => x[1]);
 const timings = [7.5, 10, 12, 15, 20, 25, 30].map((x) => x * 60);
@@ -180,7 +180,7 @@ function validateMatchProperties(match) {
   );
 }
 
-module.exports = {
+export default {
   scenarioChecks,
   validateMatchProperties,
   teamScenariosQueryParams,

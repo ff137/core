@@ -73,4 +73,4 @@ function processDraftTimings(entries, meta) {
   }
   return draftTimings;
 }
-module.exports = processDraftTimings;
+export default processDraftTimings;

@@ -2,16 +2,16 @@
  * Provides utility functions.
  * All functions should have external dependencies (DB, etc.) passed as parameters
  * */
-const constants = require("dotaconstants");
-const request = require("request");
-const Long = require("long");
-const urllib = require("url");
-const uuidV4 = require("uuid/v4");
-const moment = require("moment");
-const crypto = require("crypto");
-const laneMappings = require("./laneMappings");
-const config = require("../config");
-const contributors = require("../CONTRIBUTORS");
+import { createHash } from "crypto";
+import { game_mode, lobby_type, patch } from "dotaconstants";
+import { fromString } from "long";
+import moment from "moment";
+import request from "request";
+import { parse as _parse, format } from "url";
+import uuidV4 from "uuid/v4";
+import contributors from "../CONTRIBUTORS";
+import { DEFAULT_DELAY, GCDATA_RETRIEVER_HOST, NODE_ENV, RETRIEVER_HOST, STEAM_API_HOST, STEAM_API_KEY } from "../config";
+import laneMappings from "./laneMappings";
 
 /**
  * Tokenizes an input string.
@@ -34,7 +34,7 @@ function tokenize(input) {
  * Takes and returns a string
  */
 function convert64to32(id) {
-  return Long.fromString(id).subtract("76561197960265728").toString();
+  return fromString(id).subtract("76561197960265728").toString();
 }
 
 /*
@@ -43,7 +43,7 @@ function convert64to32(id) {
  * Takes and returns a string
  */
 function convert32to64(id) {
-  return Long.fromString(id).add("76561197960265728").toString();
+  return fromString(id).add("76561197960265728").toString();
 }
 
 /**
@@ -214,7 +214,7 @@ function generateJob(type, payload) {
  * */
 function getData(url, cb) {
   let u;
-  let delay = Number(config.DEFAULT_DELAY);
+  let delay = Number(DEFAULT_DELAY);
   let timeout = 5000;
   if (typeof url === "object" && url && url.url) {
     // options object
@@ -229,18 +229,18 @@ function getData(url, cb) {
   } else {
     u = url;
   }
-  const parse = urllib.parse(u, true);
+  const parse = _parse(u, true);
   const steamApi = parse.host === "api.steampowered.com";
   if (steamApi) {
     // choose an api key to use
-    const apiKeys = config.STEAM_API_KEY.split(",");
+    const apiKeys = STEAM_API_KEY.split(",");
     parse.query.key = apiKeys[Math.floor(Math.random() * apiKeys.length)];
     parse.search = null;
     // choose a steam api host
-    const apiHosts = config.STEAM_API_HOST.split(",");
+    const apiHosts = STEAM_API_HOST.split(",");
     parse.host = apiHosts[Math.floor(Math.random() * apiHosts.length)];
   }
-  const target = urllib.format(parse);
+  const target = format(parse);
   console.log("%s - getData: %s", new Date(), target);
   return setTimeout(() => {
     request(
@@ -395,10 +395,10 @@ function mode(array) {
  * */
 function isSignificant(match) {
   return Boolean(
-    constants.game_mode[match.game_mode] &&
-      constants.game_mode[match.game_mode].balanced &&
-      constants.lobby_type[match.lobby_type] &&
-      constants.lobby_type[match.lobby_type].balanced &&
+    game_mode[match.game_mode] &&
+      game_mode[match.game_mode].balanced &&
+      lobby_type[match.lobby_type] &&
+      lobby_type[match.lobby_type].balanced &&
       match.radiant_win !== undefined &&
       match.duration > 360 &&
       (match.players || []).every((player) => (player.gold_per_min || 0) < 2500)
@@ -535,8 +535,8 @@ function median(data) {
 function getPatchIndex(startTime) {
   const date = new Date(startTime * 1000);
   let i;
-  for (i = 1; i < constants.patch.length; i += 1) {
-    const pd = new Date(constants.patch[i].date);
+  for (i = 1; i < patch.length; i += 1) {
+    const pd = new Date(patch[i].date);
     // stop when patch date is past the start time
     if (pd > date) {
       break;
@@ -550,7 +550,7 @@ function getPatchIndex(startTime) {
  * Constructs a replay url
  * */
 function buildReplayUrl(matchId, cluster, replaySalt) {
-  const suffix = config.NODE_ENV === "test" ? ".dem" : ".dem.bz2";
+  const suffix = NODE_ENV === "test" ? ".dem" : ".dem.bz2";
   if (cluster === 236) {
     return `http://replay${cluster}.wmsj.cn/570/${matchId}_${replaySalt}${suffix}`;
   }
@@ -813,12 +813,12 @@ function getLaneFromPosData(lanePos, isRadiant) {
  * Get array of retriever endpoints from config
  * */
 function getRetrieverArr(useGcDataArr) {
-  const parserHosts = useGcDataArr ? config.GCDATA_RETRIEVER_HOST : "";
-  const input = parserHosts || config.RETRIEVER_HOST;
+  const parserHosts = useGcDataArr ? GCDATA_RETRIEVER_HOST : "";
+  const input = parserHosts || RETRIEVER_HOST;
   const output = [];
   const arr = input.split(",");
   arr.forEach((element) => {
-    const parsedUrl = urllib.parse(`http://${element}`, true);
+    const parsedUrl = _parse(`http://${element}`, true);
     for (let i = 0; i < (parsedUrl.query.size || 1); i += 1) {
       output.push(parsedUrl.host);
     }
@@ -883,11 +883,11 @@ function cleanItemSchema(input) {
 
 function checkIfInExperiment(ip, mod) {
   return (
-    crypto.createHash("md5").update(ip).digest().readInt32BE(0) % 100 < mod
+    createHash("md5").update(ip).digest().readInt32BE(0) % 100 < mod
   );
 }
 
-module.exports = {
+export default {
   tokenize,
   generateJob,
   getData,

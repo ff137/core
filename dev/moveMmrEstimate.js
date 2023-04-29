@@ -1,21 +1,21 @@
-const async = require("async");
-const redis = require("../store/redis");
-const db = require("../store/db");
-const utility = require("../util/utility");
+import { eachLimit } from "async";
+import { keys as _keys, lrange } from "../store/redis";
+import { transaction, raw } from "../store/db";
+import { average } from "../util/utility";
 
-db.transaction((trx) => {
-  redis.keys("mmr_estimates:*", (err, keys) => {
-    async.eachLimit(
+transaction((trx) => {
+  _keys("mmr_estimates:*", (err, keys) => {
+    eachLimit(
       keys,
       1000,
       (key, cb) => {
         console.log(key);
-        redis.lrange(key, 0, -1, (err, result) => {
+        lrange(key, 0, -1, (err, result) => {
           const accountId = key.split(":")[1];
           const data = result.filter((d) => d).map((d) => Number(d));
-          const estimate = utility.average(data);
+          const estimate = average(data);
           if (accountId && estimate) {
-            db.raw(
+            raw(
               "INSERT INTO mmr_estimates VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET estimate = ?",
               [accountId, estimate, estimate]
             ).asCallback(cb);

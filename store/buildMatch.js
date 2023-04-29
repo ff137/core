@@ -1,22 +1,22 @@
 /**
  * Functions to build/cache match object
  * */
-const constants = require("dotaconstants");
-const { promisify } = require("util");
-const config = require("../config");
-const queries = require("./queries");
-const compute = require("../util/compute");
-const utility = require("../util/utility");
-const cassandra = require("../store/cassandra");
-const redis = require("../store/redis");
-const db = require("../store/db");
+import { heroes } from "dotaconstants";
+import { promisify } from "util";
+import { ENABLE_MATCH_CACHE, MATCH_CACHE_SECONDS } from "../config";
+import { execute } from "../store/cassandra";
+import { first, raw } from "../store/db";
+import redis, { get, setex } from "../store/redis";
+import compute from "../util/compute";
+import utility, { generateJob, getData, redisCount } from "../util/utility";
+import { getMatchBenchmarksPromisified, insertMatch } from "./queries";
 
 const { computeMatchData } = compute;
 const { deserialize, buildReplayUrl, isContributor } = utility;
-const getRedisAsync = promisify(redis.get).bind(redis);
+const getRedisAsync = promisify(get).bind(redis);
 
 async function getMatchData(matchId) {
-  const result = await cassandra.execute(
+  const result = await execute(
     "SELECT * FROM matches where match_id = ?",
     [Number(matchId)],
     {
@@ -30,7 +30,7 @@ async function getMatchData(matchId) {
 }
 
 async function getPlayerMatchData(matchId) {
-  const result = await cassandra.execute(
+  const result = await execute(
     "SELECT * FROM player_matches where match_id = ?",
     [Number(matchId)],
     {
@@ -42,8 +42,7 @@ async function getPlayerMatchData(matchId) {
   const deserializedResult = result.rows.map((m) => deserialize(m));
   return Promise.all(
     deserializedResult.map((r) =>
-      db
-        .raw(
+      raw(
           `
         SELECT personaname, name, last_login 
         FROM players
@@ -70,13 +69,11 @@ async function extendPlayerData(player, match) {
     is_contributor: isContributor(player.account_id),
   };
   computeMatchData(p);
-  const row = await db
-    .first()
+  const row = await first()
     .from("rank_tier")
     .where({ account_id: p.account_id || null });
   p.rank_tier = row ? row.rating : null;
-  const subscriber = await db
-    .first()
+  const subscriber = await first()
     .from("subscriber")
     .where({ account_id: p.account_id || null });
   p.is_subscriber = Boolean(subscriber?.status);
@@ -84,8 +81,7 @@ async function extendPlayerData(player, match) {
 }
 
 async function prodataInfo(matchId) {
-  const result = await db
-    .first(["radiant_team_id", "dire_team_id", "leagueid"])
+  const result = await first(["radiant_team_id", "dire_team_id", "leagueid"])
     .from("matches")
     .where({
       match_id: matchId,
@@ -93,13 +89,13 @@ async function prodataInfo(matchId) {
   if (!result) {
     return Promise.resolve({});
   }
-  const leaguePromise = db.first().from("leagues").where({
+  const leaguePromise = first().from("leagues").where({
     leagueid: result.leagueid,
   });
-  const radiantTeamPromise = db.first().from("teams").where({
+  const radiantTeamPromise = first().from("teams").where({
     team_id: result.radiant_team_id,
   });
-  const direTeamPromise = db.first().from("teams").where({
+  const direTeamPromise = first().from("teams").where({
     team_id: result.dire_team_id,
   });
   const [league, radiantTeam, direTeam] = await Promise.all([
@@ -122,7 +118,7 @@ async function getMatch(matchId) {
   if (!match) {
     return Promise.resolve();
   }
-  utility.redisCount(redis, "build_match");
+  redisCount(redis, "build_match");
   let playersMatchData = [];
   try {
     playersMatchData = await getPlayerMatchData(matchId);
@@ -138,7 +134,7 @@ async function getMatch(matchId) {
       e.message.includes("Attempt to access memory outside buffer bounds")
     ) {
       // Delete and request new
-      await cassandra.execute(
+      await execute(
         "DELETE FROM player_matches where match_id = ?",
         [Number(matchId)],
         { prepare: true }
@@ -147,8 +143,8 @@ async function getMatch(matchId) {
         match_id: Number(matchId),
       };
       await new Promise((resolve, reject) => {
-        utility.getData(
-          utility.generateJob("api_details", match).url,
+        getData(
+          generateJob("api_details", match).url,
           (err, body) => {
             if (err) {
               console.error(err);
@@ -156,7 +152,7 @@ async function getMatch(matchId) {
             }
             // match details response
             const match = body.result;
-            return queries.insertMatch(
+            return insertMatch(
               match,
               {
                 type: "api",
@@ -164,7 +160,7 @@ async function getMatch(matchId) {
               },
               () => {
                 // Count for logging
-                utility.redisCount(redis, "cassandra_repair");
+                redisCount(redis, "cassandra_repair");
                 resolve();
               }
             );
@@ -179,12 +175,12 @@ async function getMatch(matchId) {
   const playersPromise = Promise.all(
     playersMatchData.map((p) => extendPlayerData(p, match))
   );
-  const gcdataPromise = db.first().from("match_gcdata").where({
+  const gcdataPromise = first().from("match_gcdata").where({
     match_id: matchId,
   });
   const cosmeticsPromise = Promise.all(
     Object.keys(match.cosmetics || {}).map((itemId) =>
-      db.first().from("cosmetics").where({
+      first().from("cosmetics").where({
         item_id: itemId,
       })
     )
@@ -207,7 +203,7 @@ async function getMatch(matchId) {
 
   if (cosmetics) {
     const playersWithCosmetics = matchResult.players.map((p) => {
-      const hero = constants.heroes[p.hero_id] || {};
+      const hero = heroes[p.hero_id] || {};
       const playerCosmetics = cosmetics
         .filter(Boolean)
         .filter(
@@ -233,7 +229,7 @@ async function getMatch(matchId) {
       matchResult.replay_salt
     );
   }
-  const matchWithBenchmarks = await queries.getMatchBenchmarksPromisified(
+  const matchWithBenchmarks = await getMatchBenchmarksPromisified(
     matchResult
   );
   return Promise.resolve(matchWithBenchmarks);
@@ -249,10 +245,10 @@ async function buildMatch(matchId) {
   if (!match) {
     return Promise.resolve();
   }
-  if (match.version && config.ENABLE_MATCH_CACHE) {
-    await redis.setex(key, config.MATCH_CACHE_SECONDS, JSON.stringify(match));
+  if (match.version && ENABLE_MATCH_CACHE) {
+    await setex(key, MATCH_CACHE_SECONDS, JSON.stringify(match));
   }
   return Promise.resolve(match);
 }
 
-module.exports = buildMatch;
+export default buildMatch;

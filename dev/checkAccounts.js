@@ -1,13 +1,13 @@
 /* eslint-disable */
-const fs = require("fs");
-const Steam = require("steam");
-const async = require("async");
+import { readFileSync } from "fs";
+import { SteamClient, SteamUser, EResult } from "steam";
+import { whilst } from "async";
 
-const accountData = fs.readFileSync("./STEAM_ACCOUNT_DATA_BAD.txt", "utf8");
+const accountData = readFileSync("./STEAM_ACCOUNT_DATA_BAD.txt", "utf8");
 const accountArray = accountData.split(require("os").EOL);
 
 let index = Number(process.argv[2]) || -1;
-async.whilst(
+whilst(
   () => true,
   (cb) => {
     index += 1;
@@ -19,16 +19,16 @@ async.whilst(
       account_name: user,
       password: pass,
     };
-    const client = new Steam.SteamClient();
-    client.steamUser = new Steam.SteamUser(client);
+    const client = new SteamClient();
+    client.steamUser = new SteamUser(client);
     client.connect();
     client.on("connected", () => {
       client.steamUser.logOn(logOnDetails);
     });
     client.on("logOnResponse", (logOnResp) => {
-      if (logOnResp.eresult === Steam.EResult.AccountDisabled) {
+      if (logOnResp.eresult === EResult.AccountDisabled) {
         console.error(index, user, "failed", logOnResp.eresult);
-      } else if (logOnResp.eresult === Steam.EResult.InvalidPassword) {
+      } else if (logOnResp.eresult === EResult.InvalidPassword) {
         console.error(index, user, "failed", logOnResp.eresult);
       } else {
         console.error(index, user, "passed", logOnResp.eresult);

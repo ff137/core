@@ -1,14 +1,14 @@
 /**
  * Provides methods for working with the job queue
  * */
-const moment = require("moment");
-const async = require("async");
-const redis = require("./redis");
-const db = require("./db");
+import { forever } from "async";
+import moment from "moment";
+import { raw, transaction } from "./db";
+import { blpop } from "./redis";
 
 function runQueue(queueName, parallelism, processor) {
   function processOneJob(cb) {
-    redis.blpop(queueName, "0", (err, job) => {
+    blpop(queueName, "0", (err, job) => {
       if (err) {
         throw err;
       }
@@ -22,7 +22,7 @@ function runQueue(queueName, parallelism, processor) {
     });
   }
   for (let i = 0; i < parallelism; i += 1) {
-    async.forever(processOneJob, (err) => {
+    forever(processOneJob, (err) => {
       throw err;
     });
   }
@@ -30,7 +30,7 @@ function runQueue(queueName, parallelism, processor) {
 
 function runReliableQueue(queueName, parallelism, processor) {
   function processOneJob(cb) {
-    db.transaction((trx) => {
+    transaction((trx) => {
       trx
         .raw(
           `
@@ -85,14 +85,14 @@ function runReliableQueue(queueName, parallelism, processor) {
     });
   }
   for (let i = 0; i < parallelism; i += 1) {
-    async.forever(processOneJob, (err) => {
+    forever(processOneJob, (err) => {
       throw err;
     });
   }
 }
 
 function addJob(queueName, job, options, cb) {
-  db.raw(
+  raw(
     `INSERT INTO queue(type, timestamp, attempts, data, next_attempt_time, priority)
   VALUES (?, ?, ?, ?, ?, ?) 
   RETURNING *`,
@@ -113,7 +113,7 @@ function addJob(queueName, job, options, cb) {
 }
 
 function getJob(jobId, cb) {
-  db.raw("SELECT * FROM queue WHERE id = ?", [jobId]).asCallback(
+  raw("SELECT * FROM queue WHERE id = ?", [jobId]).asCallback(
     (err, result) => {
       if (err) {
         return cb(err);
@@ -123,7 +123,7 @@ function getJob(jobId, cb) {
   );
 }
 
-module.exports = {
+export default {
   runQueue,
   runReliableQueue,
   addJob,

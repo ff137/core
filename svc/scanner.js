@@ -4,16 +4,16 @@
  * The endpoint usually takes around 2 seconds to return data
  * Therefore each IP should generally avoid requesting more than once every 10 seconds
  * */
-const async = require("async");
-const utility = require("../util/utility");
-const config = require("../config");
-const redis = require("../store/redis");
-const queries = require("../store/queries");
+import { each } from "async";
+import { NODE_ENV, SCANNER_DELAY, SCANNER_PERCENT, START_SEQ_NUM } from "../config";
+import queries from "../store/queries";
+import redis, { get, set, setex } from "../store/redis";
+import utility, { redisCount } from "../util/utility";
 
 const { insertMatch } = queries;
 const { getData, generateJob } = utility;
 // const api_hosts = config.STEAM_API_HOST.split(',');
-const delay = Number(config.SCANNER_DELAY);
+const delay = Number(SCANNER_DELAY);
 const PAGE_SIZE = 100;
 
 function scanApi(seqNum) {
@@ -28,11 +28,11 @@ function scanApi(seqNum) {
       return cb(err);
     }
     // Optionally throttle inserts to prevent overload
-    if (match.match_id % 100 >= Number(config.SCANNER_PERCENT)) {
+    if (match.match_id % 100 >= Number(SCANNER_PERCENT)) {
       return finishMatch(null, cb);
     }
     // check if match was previously processed
-    return redis.get(`scanner_insert:${match.match_id}`, (err, result) => {
+    return get(`scanner_insert:${match.match_id}`, (err, result) => {
       if (err) {
         return finishMatch(err, cb);
       }
@@ -47,7 +47,7 @@ function scanApi(seqNum) {
           (err) => {
             if (!err) {
               // Save match_id in Redis to avoid duplicate inserts (persist even if process restarts)
-              redis.setex(`scanner_insert:${match.match_id}`, 3600 * 4, 1);
+              setex(`scanner_insert:${match.match_id}`, 3600 * 4, 1);
             }
             finishMatch(err, cb);
           }
@@ -71,7 +71,7 @@ function scanApi(seqNum) {
           // On non-retryable error, increment match seq num by 1 and continue
           if (err.result.status === 2) {
             nextSeqNum += 1;
-            utility.redisCount(redis, "skip_seq_num");
+            redisCount(redis, "skip_seq_num");
             return cb();
           }
           return cb(err);
@@ -89,7 +89,7 @@ function scanApi(seqNum) {
           matchSeqNum,
           resp.length
         );
-        return async.each(resp, processMatch, cb);
+        return each(resp, processMatch, cb);
       }
     );
   }
@@ -101,7 +101,7 @@ function scanApi(seqNum) {
       return scanApi(seqNum);
     }
     console.log("next_seq_num: %s", nextSeqNum);
-    redis.set("match_seq_num", nextSeqNum);
+    set("match_seq_num", nextSeqNum);
     // Completed inserting matches on this page
     // If not a full page, delay the next iteration
     return setTimeout(() => scanApi(nextSeqNum), delayNextRequest ? 3000 : 0);
@@ -109,8 +109,8 @@ function scanApi(seqNum) {
 
   processPage(seqNum, finishPageSet);
 }
-if (config.START_SEQ_NUM) {
-  redis.get("match_seq_num", (err, result) => {
+if (START_SEQ_NUM) {
+  get("match_seq_num", (err, result) => {
     if (err || !result) {
       throw new Error(
         "failed to get match_seq_num from redis, waiting to retry"
@@ -119,7 +119,7 @@ if (config.START_SEQ_NUM) {
     const numResult = Number(result);
     scanApi(numResult);
   });
-} else if (config.NODE_ENV !== "production") {
+} else if (NODE_ENV !== "production") {
   // Never do this in production to avoid skipping sequence number if we didn't pull .env properly
   const container = generateJob("api_history", {});
   getData(container.url, (err, data) => {

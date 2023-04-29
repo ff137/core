@@ -1,9 +1,9 @@
 /**
  * Computes team Elo ratings by game
  * */
-const JSONStream = require("JSONStream");
-const async = require("async");
-const db = require("../store/db");
+import { parse } from "JSONStream";
+import { eachSeries } from "async";
+import { raw } from "../store/db";
 // Keep each team's rating in memory and update
 const teams = {};
 const wins = {};
@@ -11,8 +11,7 @@ const losses = {};
 const startTimes = {};
 const kFactor = 32;
 // Read a stream from the database
-const stream = db
-  .raw(
+const stream = raw(
     `
 SELECT team_match.team_id team_id1, tm2.team_id team_id2, matches.match_id, team_match.radiant = radiant_win team1_win, start_time
 FROM team_match
@@ -23,7 +22,7 @@ ORDER BY match_id ASC
 `
   )
   .stream();
-stream.pipe(JSONStream.parse());
+stream.pipe(parse());
 stream.on("data", (match) => {
   // console.log(JSON.stringify(match));
   if (!teams[match.team_id1]) {
@@ -66,7 +65,7 @@ stream.on("data", (match) => {
 stream.on("end", () => {
   console.log(teams, wins, losses, startTimes);
   // Write the results to table
-  async.eachSeries(
+  eachSeries(
     Object.keys(teams),
     (teamId, cb) => {
       console.log([
@@ -76,7 +75,7 @@ stream.on("end", () => {
         losses[teamId],
         startTimes[teamId],
       ]);
-      db.raw(
+      raw(
         `INSERT INTO team_rating(team_id, rating, wins, losses, last_match_time) VALUES(?, ?, ?, ?, ?)
   ON CONFLICT(team_id) DO UPDATE SET team_id=EXCLUDED.team_id, rating=EXCLUDED.rating, wins=EXCLUDED.wins, losses=EXCLUDED.losses, last_match_time=EXCLUDED.last_match_time`,
         [

@@ -1,10 +1,10 @@
 /**
  * Load match IDs from database, then issue re-insert and re-parse on all of them
  * */
-const async = require("async");
-const utility = require("../util/utility");
-const queries = require("../store/queries");
-const db = require("../store/db");
+import { eachSeries } from "async";
+import utility from "../util/utility";
+import queries from "../store/queries";
+import { select } from "../store/db";
 
 const { generateJob, getData } = utility;
 const { insertMatch } = queries;
@@ -13,7 +13,7 @@ const args = process.argv.slice(2);
 const matchId = Number(args[0]) || 0;
 const targetVersion = Number(args[1]) || 0;
 
-db.select("match_id")
+select("match_id")
   .from("matches")
   .where("match_id", ">", matchId)
   .where("version", "!=", targetVersion)
@@ -23,7 +23,7 @@ db.select("match_id")
     if (err) {
       throw err;
     }
-    async.eachSeries(
+    eachSeries(
       result,
       (row, cb) => {
         const job = generateJob("api_details", {

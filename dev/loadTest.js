@@ -1,13 +1,13 @@
-const async = require("async");
-const request = require("request");
-const db = require("../store/db");
+import { eachLimit } from "async";
+import request from "request";
+import { select } from "../store/db";
 
 const host = "localhost:5000";
 function cb(err) {
   process.exit(Number(err));
 }
 
-db.select("account_id", "last_login")
+select("account_id", "last_login")
   .from("players")
   .whereNotNull("last_login")
   .orderBy("last_login")
@@ -16,7 +16,7 @@ db.select("account_id", "last_login")
     if (err) {
       return cb(err);
     }
-    return async.eachLimit(
+    return eachLimit(
       results,
       10,
       (r, cb) => {
