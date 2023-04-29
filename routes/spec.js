@@ -1,66 +1,57 @@
-const async = require("async");
-const constants = require("dotaconstants");
-const moment = require("moment");
-const { Client } = require("pg");
-const config = require("../config");
-// const crypto = require('crypto');
-// const uuidV4 = require('uuid/v4');
-const queue = require("../store/queue");
-const queries = require("../store/queries");
-const search = require("../store/search");
-const searchES = require("../store/searchES");
-const buildMatch = require("../store/buildMatch");
-const buildStatus = require("../store/buildStatus");
-const playerFields = require("./playerFields.json");
-// const getGcData = require('../util/getGcData');
-const utility = require("../util/utility");
-const su = require("../util/scenariosUtil");
-const db = require("../store/db");
-const redis = require("../store/redis");
-const packageJson = require("../package.json");
-const cacheFunctions = require("../store/cacheFunctions");
-const params = require("./params");
-const { radiant_win, player_slot, duration } = require("./properties");
+import { parallel } from "async";
+import constants, { heroes as _heroes } from "dotaconstants";
+import moment from "moment";
+import { Client } from "pg";
+import { ENABLE_PLAYER_CACHE, READONLY_POSTGRES_URL, ES_SEARCH_PERCENT } from "../config";
+import { getJob } from "../store/queue";
+import { getPlayer, getMmrEstimate, getPlayerMatches, getPeers, getProPeers, getPlayerRatings, getPlayerHeroRankings, getMetadata, getDistributions, getHeroRankings, getHeroBenchmarks, insertMatch, getHeroItemPopularity, getItemTimings, getLaneRoles, getTeamScenarios } from "../store/queries";
+import search from "../store/search";
+import searchES from "../store/searchES";
+import buildMatch from "../store/buildMatch";
+import buildStatus from "../store/buildStatus";
+import playerFields from "./playerFields.json";
+import utility, { isRadiant as _isRadiant, mergeObjects, checkIfInExperiment, getData, generateJob } from "../util/utility";
+import su from "../util/scenariosUtil";
+import db, { raw, first, select } from "../store/db";
+import redis, { rpush, hgetall, get as _get, setex, zrevrange, zrangebyscore, mget } from "../store/redis";
+import packageJson from "../package.json";
+import { write } from "../store/cacheFunctions";
+import { accountIdParam as _accountIdParam, limitParam, offsetParam, winParam, patchParam, gameModeParam, lobbyTypeParam, regionParam, dateParam, laneRoleParam, heroIdParam, isRadiantParam, includedAccountIdParam, excludedAccountIdParam, withHeroIdParam, againstHeroIdParam, significantParam, havingParam, sortParam, projectParam, lessThanMatchIdParam, mmrAscendingParam, mmrDescendingParam, heroIdPathParam, leagueIdPathParam, teamIdPathParam } from "./params";
+import { radiant_win, player_slot, duration } from "./properties";
 
-const {
-  teamObject,
-  matchObject,
-  heroObject,
-  playerObject,
-  leagueObject,
-} = require("./objects");
+import { teamObject, matchObject, heroObject, playerObject, leagueObject } from "./objects";
 
 const { redisCount, countPeers, isContributor, matchupToString } = utility;
 const { subkeys, countCats } = playerFields;
 const playerParams = [
-  params.accountIdParam,
-  params.limitParam,
-  params.offsetParam,
-  params.winParam,
-  params.patchParam,
-  params.gameModeParam,
-  params.lobbyTypeParam,
-  params.regionParam,
-  params.dateParam,
-  params.laneRoleParam,
-  params.heroIdParam,
-  params.isRadiantParam,
-  params.includedAccountIdParam,
-  params.excludedAccountIdParam,
-  params.withHeroIdParam,
-  params.againstHeroIdParam,
-  params.significantParam,
-  params.havingParam,
-  params.sortParam,
+  _accountIdParam,
+  limitParam,
+  offsetParam,
+  winParam,
+  patchParam,
+  gameModeParam,
+  lobbyTypeParam,
+  regionParam,
+  dateParam,
+  laneRoleParam,
+  heroIdParam,
+  isRadiantParam,
+  includedAccountIdParam,
+  excludedAccountIdParam,
+  withHeroIdParam,
+  againstHeroIdParam,
+  significantParam,
+  havingParam,
+  sortParam,
 ];
 
 function sendDataWithCache(req, res, data, key) {
   if (
-    config.ENABLE_PLAYER_CACHE &&
+    ENABLE_PLAYER_CACHE &&
     req.originalQuery &&
     !Object.keys(req.originalQuery).length
   ) {
-    cacheFunctions.write(
+    write(
       {
         key,
         account_id: req.params.account_id,
@@ -1103,7 +1094,7 @@ const spec = {
         tags: ["playersByRank"],
         route: () => "/playersByRank",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `
             SELECT account_id, rating, fh_unavailable
             FROM players
@@ -1285,10 +1276,10 @@ const spec = {
         route: () => "/players/:account_id",
         func: (req, res, cb) => {
           const accountId = Number(req.params.account_id);
-          async.parallel(
+          parallel(
             {
               profile(cb) {
-                queries.getPlayer(db, accountId, (err, playerData) => {
+                getPlayer(db, accountId, (err, playerData) => {
                   if (playerData !== null && playerData !== undefined) {
                     playerData.is_contributor = isContributor(accountId);
                     playerData.is_subscriber = Boolean(playerData?.status);
@@ -1297,7 +1288,7 @@ const spec = {
                 });
               },
               solo_competitive_rank(cb) {
-                db.first()
+                first()
                   .from("solo_competitive_rank")
                   .where({ account_id: accountId })
                   .asCallback((err, row) => {
@@ -1305,7 +1296,7 @@ const spec = {
                   });
               },
               competitive_rank(cb) {
-                db.first()
+                first()
                   .from("competitive_rank")
                   .where({ account_id: accountId })
                   .asCallback((err, row) => {
@@ -1313,7 +1304,7 @@ const spec = {
                   });
               },
               rank_tier(cb) {
-                db.first()
+                first()
                   .from("rank_tier")
                   .where({ account_id: accountId })
                   .asCallback((err, row) => {
@@ -1321,7 +1312,7 @@ const spec = {
                   });
               },
               leaderboard_rank(cb) {
-                db.first()
+                first()
                   .from("leaderboard_rank")
                   .where({ account_id: accountId })
                   .asCallback((err, row) => {
@@ -1329,7 +1320,7 @@ const spec = {
                   });
               },
               mmr_estimate(cb) {
-                queries.getMmrEstimate(accountId, (err, est) =>
+                getMmrEstimate(accountId, (err, est) =>
                   cb(err, est || {})
                 );
               },
@@ -1385,7 +1376,7 @@ const spec = {
                 "player_slot",
                 "radiant_win"
               );
-              queries.getPlayerMatches(
+              getPlayerMatches(
                 req.params.account_id,
                 req.queryObj,
                 (err, cache) => {
@@ -1393,7 +1384,7 @@ const spec = {
                     return cb(err);
                   }
                   cache.forEach((m) => {
-                    if (utility.isRadiant(m) === m.radiant_win) {
+                    if (_isRadiant(m) === m.radiant_win) {
                       result.win += 1;
                     } else {
                       result.lose += 1;
@@ -1539,7 +1530,7 @@ const spec = {
             },
             route: () => "/players/:account_id/recentMatches",
             func: (req, res, cb) => {
-              queries.getPlayerMatches(
+              getPlayerMatches(
                 req.params.account_id,
                 {
                   project: req.queryObj.project.concat([
@@ -1590,7 +1581,7 @@ const spec = {
         tags: ["players"],
         parameters: [
           { $ref: playerParams }, //todo
-          { $ref: params.projectParam }, 
+          { $ref: projectParam }, 
         ],
         responses: {
           200: {
@@ -1694,7 +1685,7 @@ const spec = {
                 "party_size",
               ];
               req.queryObj.project = req.queryObj.project.concat(additionalFields);
-              queries.getPlayerMatches(
+              getPlayerMatches(
                 req.params.account_id,
                 req.queryObj,
                 (err, cache) => {
@@ -1772,7 +1763,7 @@ const spec = {
         func: (req, res, cb) => {
           const heroes = {};
           // prefill heroes with every hero
-          Object.keys(constants.heroes).forEach((heroId) => {
+          Object.keys(_heroes).forEach((heroId) => {
             const hero = {
               hero_id: heroId,
               last_played: 0,
@@ -1792,7 +1783,7 @@ const spec = {
             "player_slot",
             "radiant_win"
           );
-          queries.getPlayerMatches(
+          getPlayerMatches(
             req.params.account_id,
             req.queryObj,
             (err, cache) => {
@@ -1949,7 +1940,7 @@ const spec = {
             "gold_per_min",
             "xp_per_min"
           );
-          queries.getPlayerMatches(
+          getPlayerMatches(
             req.params.account_id,
             req.queryObj,
             (err, cache) => {
@@ -1957,7 +1948,7 @@ const spec = {
                 return cb(err);
               }
               const teammates = countPeers(cache);
-              return queries.getPeers(
+              return getPeers(
                 db,
                 teammates,
                 {
@@ -2143,7 +2134,7 @@ const spec = {
             "player_slot",
             "radiant_win"
           );
-          queries.getPlayerMatches(
+          getPlayerMatches(
             req.params.account_id,
             req.queryObj,
             (err, cache) => {
@@ -2151,7 +2142,7 @@ const spec = {
                 return cb(err);
               }
               const teammates = countPeers(cache);
-              return queries.getProPeers(
+              return getProPeers(
                 db,
                 teammates,
                 {
@@ -2220,7 +2211,7 @@ const spec = {
           req.queryObj.project = req.queryObj.project.concat(
             Object.keys(subkeys)
           );
-          queries.getPlayerMatches(
+          getPlayerMatches(
             req.params.account_id,
             req.queryObj,
             (err, cache) => {
@@ -2297,7 +2288,7 @@ const spec = {
           req.queryObj.project = req.queryObj.project.concat(
             Object.keys(countCats)
           );
-          queries.getPlayerMatches(
+          getPlayerMatches(
             req.params.account_id,
             req.queryObj,
             (err, cache) => {
@@ -2305,7 +2296,7 @@ const spec = {
                 return cb(err);
               }
               cache.forEach((m) => {
-                m.is_radiant = utility.isRadiant(m);
+                m.is_radiant = _isRadiant(m);
                 Object.keys(countCats).forEach((key) => {
                   if (!result[key][Math.floor(m[key])]) {
                     result[key][Math.floor(m[key])] = {
@@ -2314,7 +2305,7 @@ const spec = {
                     };
                   }
                   result[key][Math.floor(m[key])].games += 1;
-                  const won = Number(m.radiant_win === utility.isRadiant(m));
+                  const won = Number(m.radiant_win === _isRadiant(m));
                   result[key][Math.floor(m[key])].win += won;
                 });
               });
@@ -2355,7 +2346,7 @@ const spec = {
           req.queryObj.project = req.queryObj.project
             .concat("radiant_win", "player_slot")
             .concat([field].filter((f) => subkeys[f]));
-          queries.getPlayerMatches(
+          getPlayerMatches(
             req.params.account_id,
             req.queryObj,
             (err, cache) => {
@@ -2383,7 +2374,7 @@ const spec = {
                   if (bucketArray[index]) {
                     bucketArray[index].games += 1;
                     bucketArray[index].win +=
-                      utility.isRadiant(m) === m.radiant_win ? 1 : 0;
+                      _isRadiant(m) === m.radiant_win ? 1 : 0;
                   }
                 }
               });
@@ -2433,7 +2424,7 @@ const spec = {
           req.queryObj.project = req.queryObj.project.concat(
             Object.keys(result)
           );
-          queries.getPlayerMatches(
+          getPlayerMatches(
             req.params.account_id,
             req.queryObj,
             (err, cache) => {
@@ -2442,7 +2433,7 @@ const spec = {
               }
               cache.forEach((m) => {
                 Object.keys(result).forEach((key) => {
-                  utility.mergeObjects(result[key], m[key]);
+                  mergeObjects(result[key], m[key]);
                 });
               });
               return res.json(result);
@@ -2491,7 +2482,7 @@ const spec = {
           req.queryObj.project = req.queryObj.project.concat(
             Object.keys(result)
           );
-          queries.getPlayerMatches(
+          getPlayerMatches(
             req.params.account_id,
             req.queryObj,
             (err, cache) => {
@@ -2500,7 +2491,7 @@ const spec = {
               }
               cache.forEach((m) => {
                 Object.keys(result).forEach((key) => {
-                  utility.mergeObjects(result[key], m[key]);
+                  mergeObjects(result[key], m[key]);
                 });
               });
               return res.json(result);
@@ -2560,7 +2551,7 @@ const spec = {
         },
         route: () => "/players/:account_id/ratings",
         func: (req, res, cb) => {
-          queries.getPlayerRatings(db, req.params.account_id, (err, result) => {
+          getPlayerRatings(db, req.params.account_id, (err, result) => {
             if (err) {
               return cb(err);
             }
@@ -2615,7 +2606,7 @@ const spec = {
         },
         route: () => "/players/:account_id/rankings",
         func: (req, res, cb) => {
-          queries.getPlayerHeroRankings(
+          getPlayerHeroRankings(
             req.params.account_id,
             (err, result) => {
               if (err) {
@@ -2652,7 +2643,7 @@ const spec = {
         },
         route: () => "/players/:account_id/refresh",
         func: (req, res, cb) => {
-          redis.rpush(
+          rpush(
             "fhQueue",
             JSON.stringify({
               account_id: req.params.account_id || "1",
@@ -2688,7 +2679,7 @@ const spec = {
         },
         route: () => "/proPlayers",
         func: (req, res, cb) => {
-          db.select()
+          select()
             .from("players")
             .rightJoin(
               "notable_players",
@@ -2710,7 +2701,7 @@ const spec = {
         summary: "GET /proMatches",
         description: "Get list of pro matches",
         tags: ["pro matches"],
-        parameters: [params.lessThanMatchIdParam], //todo
+        parameters: [lessThanMatchIdParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -2729,7 +2720,7 @@ const spec = {
         },
         route: () => "/proMatches",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `
           SELECT match_id, duration, start_time,
           radiant_team_id, radiant.name as radiant_name,
@@ -2764,9 +2755,9 @@ const spec = {
         description: "Get list of randomly sampled public matches",
         tags: ["public matches"],
         parameters: [
-          params.mmrAscendingParam, //todo
-          params.mmrDescendingParam,
-          params.lessThanMatchIdParam,
+          mmrAscendingParam, //todo
+          mmrDescendingParam,
+          lessThanMatchIdParam,
         ],
         responses: {
           200: {
@@ -2826,7 +2817,7 @@ const spec = {
             order = "ORDER BY match_id DESC";
             moreThan = 0;
           }
-          db.raw(
+          raw(
             `
           WITH match_ids AS (SELECT match_id FROM public_matches
           WHERE TRUE
@@ -2860,7 +2851,7 @@ const spec = {
         summary: "GET /parsedMatches",
         description: "Get list of parsed match IDs",
         tags: ["parsed matches"],
-        parameters: [params.lessThanMatchIdParam], //todo
+        parameters: [lessThanMatchIdParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -2887,7 +2878,7 @@ const spec = {
           const lessThan =
             req.query.less_than_match_id || Number.MAX_SAFE_INTEGER;
 
-          db.raw(
+          raw(
             `
           SELECT * FROM parsed_matches
           WHERE match_id < ?
@@ -2938,7 +2929,7 @@ const spec = {
           // TODO handle NQL (@nicholashh query language)
           const input = req.query.sql;
           const client = new Client({
-            connectionString: config.READONLY_POSTGRES_URL,
+            connectionString: READONLY_POSTGRES_URL,
             statement_timeout: 10000,
           });
           client.connect();
@@ -2984,7 +2975,7 @@ const spec = {
         },
         route: () => "/metadata",
         func: (req, res, cb) => {
-          queries.getMetadata(req, (err, result) => {
+          getMetadata(req, (err, result) => {
             if (err) {
               return cb(err);
             }
@@ -3276,7 +3267,7 @@ const spec = {
         },
         route: () => "/distributions",
         func: (req, res, cb) => {
-          queries.getDistributions(redis, (err, result) => {
+          getDistributions(redis, (err, result) => {
             if (err) {
               return cb(err);
             }
@@ -3349,7 +3340,7 @@ const spec = {
 
           if (
             req.query.es ||
-            utility.checkIfInExperiment(res.locals.ip, config.ES_SEARCH_PERCENT)
+            checkIfInExperiment(res.locals.ip, ES_SEARCH_PERCENT)
           ) {
             return searchES(req.query, (err, result) => {
               if (err) {
@@ -3482,7 +3473,7 @@ const spec = {
         },
         route: () => "/rankings",
         func: (req, res, cb) => {
-          queries.getHeroRankings(
+          getHeroRankings(
             db,
             redis,
             req.query.hero_id,
@@ -3652,7 +3643,7 @@ const spec = {
         },
         route: () => "/benchmarks",
         func: (req, res, cb) => {
-          queries.getHeroBenchmarks(
+          getHeroBenchmarks(
             db,
             redis,
             {
@@ -3717,7 +3708,7 @@ const spec = {
         },
         route: () => "/health/:metric?",
         func: (req, res, cb) => {
-          redis.hgetall("health", (err, result) => {
+          hgetall("health", (err, result) => {
             if (err) {
               return cb(err);
             }
@@ -3766,7 +3757,7 @@ const spec = {
         },
         route: () => "/request/:jobId",
         func: (req, res, cb) => {
-          queue.getJob(req.params.jobId, (err, job) => {
+          getJob(req.params.jobId, (err, job) => {
             if (err) {
               return cb(err);
             }
@@ -3828,8 +3819,8 @@ const spec = {
           }
           if (match && match.match_id) {
             // match id request, get data from API
-            return utility.getData(
-              utility.generateJob("api_details", match).url,
+            return getData(
+              generateJob("api_details", match).url,
               (err, body) => {
                 if (err) {
                   // couldn't get data from api, non-retryable
@@ -3839,7 +3830,7 @@ const spec = {
                 redisCount(redis, "request");
                 // match details response
                 const match = body.result;
-                return queries.insertMatch(
+                return insertMatch(
                   match,
                   {
                     type: "api",
@@ -3915,7 +3906,7 @@ const spec = {
 
           // Construct key for redis
           const key = `combos:${matchupToString(t0, t1, true)}`;
-          redis.get(key, (err, reply) => {
+          _get(key, (err, reply) => {
             if (err) {
               return cb(err);
             }
@@ -3931,8 +3922,7 @@ const spec = {
             const teamA = inverted ? t1 : t0;
             const teamB = inverted ? t0 : t1;
 
-            return db
-              .raw(
+            return raw(
                 "select * from hero_search where (teamA @> ? AND teamB @> ?) OR (teamA @> ? AND teamB @> ?) order by match_id desc limit 10",
                 [teamA, teamB, teamB, teamA]
               )
@@ -3940,7 +3930,7 @@ const spec = {
                 if (err) {
                   return cb(err);
                 }
-                redis.setex(key, 60, JSON.stringify(result.rows));
+                setex(key, 60, JSON.stringify(result.rows));
                 return res.json(result.rows);
               });
           });
@@ -3969,7 +3959,7 @@ const spec = {
         },
         route: () => "/heroes",
         func: (req, res, cb) => {
-          db.select()
+          select()
             .from("heroes")
             .orderBy("id", "asc")
             .asCallback((err, result) => {
@@ -4115,7 +4105,7 @@ const spec = {
         route: () => "/heroStats",
         func: (req, res, cb) => {
           // fetch from cached redis value
-          redis.get("heroStats", (err, result) => {
+          _get("heroStats", (err, result) => {
             if (err) {
               return cb(err);
             }
@@ -4129,7 +4119,7 @@ const spec = {
         summary: "GET /heroes/{hero_id}/matches",
         description: "Get recent matches with a hero",
         tags: ["heroes"],
-        parameters: [params.heroIdPathParam], //todo
+        parameters: [heroIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4146,7 +4136,7 @@ const spec = {
         route: () => "/heroes/:hero_id/matches",
         func: (req, res, cb) => {
           const heroId = req.params.hero_id;
-          db.raw(
+          raw(
             `SELECT
           matches.match_id,
           matches.start_time,
@@ -4182,7 +4172,7 @@ const spec = {
         summary: "GET /heroes/{hero_id}/matchups",
         description: "Get results against other heroes for a hero",
         tags: ["heroes"],
-        parameters: [params.heroIdPathParam], //todo
+        parameters: [heroIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4216,7 +4206,7 @@ const spec = {
         route: () => "/heroes/:hero_id/matchups",
         func: (req, res, cb) => {
           const heroId = req.params.hero_id;
-          db.raw(
+          raw(
             `SELECT
           pm2.hero_id,
           count(player_matches.match_id) games_played,
@@ -4243,7 +4233,7 @@ const spec = {
         summary: "GET /heroes/{hero_id}/durations",
         description: "Get hero performance over a range of match durations",
         tags: ["heroes"],
-        parameters: [params.heroIdPathParam], //todo
+        parameters: [heroIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4277,7 +4267,7 @@ const spec = {
         route: () => "/heroes/:hero_id/durations",
         func: (req, res, cb) => {
           const heroId = req.params.hero_id;
-          db.raw(
+          raw(
             `SELECT
           (matches.duration / 300 * 300) duration_bin,
           count(match_id) games_played,
@@ -4301,7 +4291,7 @@ const spec = {
         summary: "GET /heroes/{hero_id}/players",
         description: "Get players who have played this hero",
         tags: ["heroes"],
-        parameters: [params.heroIdPathParam], //todo
+        parameters: [heroIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4318,7 +4308,7 @@ const spec = {
         route: () => "/heroes/:hero_id/players",
         func: (req, res, cb) => {
           const heroId = req.params.hero_id;
-          db.raw(
+          raw(
             `SELECT
               account_id,
               count(match_id) games_played,
@@ -4343,7 +4333,7 @@ const spec = {
         summary: "GET /heroes/{hero_id}/itemPopularity",
         description: "Get item popularity of hero categoried by start, early, mid and late game, analyzed from professional games",
         tags: ["heroes"],
-        parameters: [params.heroIdPathParam], //todo
+        parameters: [heroIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4402,7 +4392,7 @@ const spec = {
         route: () => "/heroes/:hero_id/itemPopularity",
         func: (req, res, cb) => {
           const heroId = req.params.hero_id;
-          queries.getHeroItemPopularity(
+          getHeroItemPopularity(
             db,
             redis,
             heroId,
@@ -4436,7 +4426,7 @@ const spec = {
         },
         route: () => "/leagues",
         func: (req, res, cb) => {
-          db.select()
+          select()
             .from("leagues")
             .asCallback((err, result) => {
               if (err) {
@@ -4452,7 +4442,7 @@ const spec = {
         summary: "GET /leagues/{league_id}",
         description: "Get data for a league",
         tags: ["leagues"],
-        parameters: [params.leagueIdPathParam], //todo
+        parameters: [leagueIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4467,7 +4457,7 @@ const spec = {
         },
         route: () => "/leagues/:league_id",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `SELECT leagues.*
           FROM leagues
           WHERE leagues.leagueid = ?`,
@@ -4486,7 +4476,7 @@ const spec = {
         summary: "GET /leagues/{league_id}/matches",
         description: "Get matches for a team",
         tags: ["leagues"],
-        parameters: [params.leagueIdPathParam], //todo
+        parameters: [leagueIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4501,7 +4491,7 @@ const spec = {
         },
         route: () => "/leagues/:league_id/matches",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `SELECT matches.*
           FROM matches
           WHERE matches.leagueid = ?`,
@@ -4520,7 +4510,7 @@ const spec = {
         summary: "GET /leagues/{league_id}/teams",
         description: "Get teams for a league",
         tags: ["leagues"],
-        parameters: [params.leagueIdPathParam], //todo
+        parameters: [leagueIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4535,7 +4525,7 @@ const spec = {
         },
         route: () => "/leagues/:league_id/teams",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `SELECT team_rating.*, teams.*
           FROM matches
           LEFT JOIN team_match using(match_id)
@@ -4584,7 +4574,7 @@ const spec = {
         },
         route: () => "/teams",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `SELECT team_rating.*, teams.*
           FROM teams
           LEFT JOIN team_rating using(team_id)
@@ -4606,7 +4596,7 @@ const spec = {
         summary: "GET /teams/{team_id}",
         description: "Get data for a team",
         tags: ["teams"],
-        parameters: [params.teamIdPathParam], //todo
+        parameters: [teamIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4621,7 +4611,7 @@ const spec = {
         },
         route: () => "/teams/:team_id",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `SELECT team_rating.*, teams.*
           FROM teams
           LEFT JOIN team_rating using(team_id)
@@ -4641,7 +4631,7 @@ const spec = {
         summary: "GET /teams/{team_id}/matches",
         description: "Get matches for a team",
         tags: ["teams"],
-        parameters: [params.teamIdPathParam], //todo
+        parameters: [teamIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4685,7 +4675,7 @@ const spec = {
         },
         route: () => "/teams/:team_id/matches",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `
           SELECT team_match.match_id, radiant_win, radiant_score, dire_score, team_match.radiant, duration, start_time, leagueid, leagues.name as league_name, cluster, tm2.team_id opposing_team_id, teams2.name opposing_team_name, teams2.logo_url opposing_team_logo
           FROM team_match
@@ -4711,7 +4701,7 @@ const spec = {
         summary: "GET /teams/{team_id}/players",
         description: "Get players who have played for a team",
         tags: ["teams"],
-        parameters: [params.teamIdPathParam], //todo
+        parameters: [teamIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4749,7 +4739,7 @@ const spec = {
         },
         route: () => "/teams/:team_id/players",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `SELECT account_id, notable_players.name, count(matches.match_id) games_played, sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins, notable_players.team_id = teams.team_id is_current_team_member
           FROM matches
           JOIN team_match USING(match_id)
@@ -4774,7 +4764,7 @@ const spec = {
         summary: "GET /teams/{team_id}/heroes",
         description: "Get heroes for a team",
         tags: ["teams"],
-        parameters: [params.teamIdPathParam], //todo
+        parameters: [teamIdPathParam], //todo
         responses: {
           200: {
             description: "Success",
@@ -4808,7 +4798,7 @@ const spec = {
         },
         route: () => "/teams/:team_id/heroes",
         func: (req, res, cb) => {
-          db.raw(
+          raw(
             `SELECT hero_id, localized_name, count(matches.match_id) games_played, sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins
           FROM matches
           JOIN team_match USING(match_id)
@@ -4876,7 +4866,7 @@ const spec = {
         },
         route: () => "/replays",
         func: (req, res, cb) => {
-          db.select(["match_id", "cluster", "replay_salt"])
+          select(["match_id", "cluster", "replay_salt"])
             .from("match_gcdata")
             .whereIn(
               "match_id",
@@ -4943,7 +4933,7 @@ const spec = {
         },
         route: () => "/records/:field",
         func: (req, res, cb) => {
-          redis.zrevrange(
+          zrevrange(
             `records:${req.params.field}`,
             0,
             99,
@@ -4990,7 +4980,7 @@ const spec = {
         },
         route: () => "/live",
         func: (req, res, cb) => {
-          redis.zrangebyscore("liveGames", "-inf", "inf", (err, rows) => {
+          zrangebyscore("liveGames", "-inf", "inf", (err, rows) => {
             if (err) {
               return cb(err);
             }
@@ -4998,7 +4988,7 @@ const spec = {
               return res.json(rows);
             }
             const keys = rows.map((r) => `liveGame:${r}`);
-            return redis.mget(keys, (err, rows) => {
+            return mget(keys, (err, rows) => {
               if (err) {
                 return cb(err);
               }
@@ -5067,7 +5057,7 @@ const spec = {
         },
         route: () => "/scenarios/itemTimings",
         func: (req, res, cb) => {
-          queries.getItemTimings(req, (err, result) => {
+          getItemTimings(req, (err, result) => {
             if (err) {
               return cb(err);
             }
@@ -5137,7 +5127,7 @@ const spec = {
         },
         route: () => "/scenarios/laneRoles",
         func: (req, res, cb) => {
-          queries.getLaneRoles(req, (err, result) => {
+          getLaneRoles(req, (err, result) => {
             if (err) {
               return cb(err);
             }
@@ -5202,7 +5192,7 @@ const spec = {
         },
         route: () => "/scenarios/misc",
         func: (req, res, cb) => {
-          queries.getTeamScenarios(req, (err, result) => {
+          getTeamScenarios(req, (err, result) => {
             if (err) {
               return cb(err);
             }
@@ -5248,7 +5238,7 @@ const spec = {
         },
         route: () => "/schema",
         func: (req, res, cb) => {
-          db.select(["table_name", "column_name", "data_type"])
+          select(["table_name", "column_name", "data_type"])
             .from("information_schema.columns")
             .where({
               table_schema: "public",
@@ -5354,4 +5344,4 @@ const spec = {
     },
   },
 };
-module.exports = spec;
+export default spec;
