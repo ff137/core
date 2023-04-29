@@ -18,12 +18,11 @@ import packageJson from "../package.json";
 import { write } from "../store/cacheFunctions";
 import { accountIdParam as _accountIdParam, limitParam, offsetParam, winParam, patchParam, gameModeParam, lobbyTypeParam, regionParam, dateParam, laneRoleParam, heroIdParam, isRadiantParam, includedAccountIdParam, excludedAccountIdParam, withHeroIdParam, againstHeroIdParam, significantParam, havingParam, sortParam, projectParam, lessThanMatchIdParam, mmrAscendingParam, mmrDescendingParam, heroIdPathParam, leagueIdPathParam, teamIdPathParam } from "./params";
 import { radiant_win, player_slot, duration } from "./properties";
+import { teamObject, matchObject, heroObject, playerObject, leagueObject } from "./objects";
 
 // import crypto from 'crypto';
 // import uuidV4 from 'uuid/v4';
 // import getGcData from '../util/getGcData';
-
-import { teamObject, matchObject, heroObject, playerObject, leagueObject } from "./objects";
 
 const { redisCount, countPeers, isContributor, matchupToString } = utility;
 const { subkeys, countCats } = playerFields;
