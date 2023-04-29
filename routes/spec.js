@@ -1097,13 +1097,13 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `
-            SELECT account_id, rating, fh_unavailable
-            FROM players
-            JOIN rank_tier
-            USING (account_id)
-            ORDER BY rating DESC
-            LIMIT 100
-            `,
+      SELECT account_id, rating, fh_unavailable
+      FROM players
+      JOIN rank_tier
+      USING (account_id)
+      ORDER BY rating DESC
+      LIMIT 100
+      `,
             []
           ).asCallback((err, result) => {
             if (err) {
@@ -1582,7 +1582,7 @@ const spec = {
         tags: ["players"],
         parameters: [
           { $ref: playerParams }, //todo
-          { $ref: projectParam }, 
+          { $ref: projectParam },
         ],
         responses: {
           200: {
@@ -2723,23 +2723,23 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `
-          SELECT match_id, duration, start_time,
-          radiant_team_id, radiant.name as radiant_name,
-          dire_team_id, dire.name as dire_name,
-          leagueid, leagues.name as league_name,
-          series_id, series_type,
-          radiant_score, dire_score,
-          radiant_win
-          FROM matches
-          LEFT JOIN teams radiant
-          ON radiant.team_id = matches.radiant_team_id
-          LEFT JOIN teams dire
-          ON dire.team_id = matches.dire_team_id
-          LEFT JOIN leagues USING(leagueid)
-          WHERE match_id < ?
-          ORDER BY match_id DESC
-          LIMIT 100
-          `,
+      SELECT match_id, duration, start_time,
+      radiant_team_id, radiant.name as radiant_name,
+      dire_team_id, dire.name as dire_name,
+      leagueid, leagues.name as league_name,
+      series_id, series_type,
+      radiant_score, dire_score,
+      radiant_win
+      FROM matches
+      LEFT JOIN teams radiant
+      ON radiant.team_id = matches.radiant_team_id
+      LEFT JOIN teams dire
+      ON dire.team_id = matches.dire_team_id
+      LEFT JOIN leagues USING(leagueid)
+      WHERE match_id < ?
+      ORDER BY match_id DESC
+      LIMIT 100
+      `,
             [req.query.less_than_match_id || Number.MAX_SAFE_INTEGER]
           ).asCallback((err, result) => {
             if (err) {
@@ -2820,23 +2820,23 @@ const spec = {
           }
           raw(
             `
-          WITH match_ids AS (SELECT match_id FROM public_matches
-          WHERE TRUE
-          AND match_id > ?
-          AND match_id < ?
-          ${order}
-          LIMIT 100)
-          SELECT * FROM
-          (SELECT * FROM public_matches
-          WHERE match_id IN (SELECT match_id FROM match_ids)) matches
-          JOIN
-          (SELECT match_id, string_agg(hero_id::text, ',') radiant_team FROM public_player_matches WHERE match_id IN (SELECT match_id FROM match_ids) AND player_slot <= 127 GROUP BY match_id) radiant_team
-          USING(match_id)
-          JOIN
-          (SELECT match_id, string_agg(hero_id::text, ',') dire_team FROM public_player_matches WHERE match_id IN (SELECT match_id FROM match_ids) AND player_slot > 127 GROUP BY match_id) dire_team
-          USING(match_id)
-          ${order}
-          `,
+      WITH match_ids AS (SELECT match_id FROM public_matches
+      WHERE TRUE
+      AND match_id > ?
+      AND match_id < ?
+      ${order}
+      LIMIT 100)
+      SELECT * FROM
+      (SELECT * FROM public_matches
+      WHERE match_id IN (SELECT match_id FROM match_ids)) matches
+      JOIN
+      (SELECT match_id, string_agg(hero_id::text, ',') radiant_team FROM public_player_matches WHERE match_id IN (SELECT match_id FROM match_ids) AND player_slot <= 127 GROUP BY match_id) radiant_team
+      USING(match_id)
+      JOIN
+      (SELECT match_id, string_agg(hero_id::text, ',') dire_team FROM public_player_matches WHERE match_id IN (SELECT match_id FROM match_ids) AND player_slot > 127 GROUP BY match_id) dire_team
+      USING(match_id)
+      ${order}
+      `,
             [moreThan, lessThan]
           ).asCallback((err, result) => {
             if (err) {
@@ -2881,11 +2881,11 @@ const spec = {
 
           raw(
             `
-          SELECT * FROM parsed_matches
-          WHERE match_id < ?
-          ORDER BY match_id DESC
-          LIMIT 100
-          `,
+      SELECT * FROM parsed_matches
+      WHERE match_id < ?
+      ORDER BY match_id DESC
+      LIMIT 100
+      `,
             [lessThan]
           ).asCallback((err, result) => {
             if (err) {
@@ -3924,9 +3924,9 @@ const spec = {
             const teamB = inverted ? t0 : t1;
 
             return raw(
-                "select * from hero_search where (teamA @> ? AND teamB @> ?) OR (teamA @> ? AND teamB @> ?) order by match_id desc limit 10",
-                [teamA, teamB, teamB, teamA]
-              )
+              "select * from hero_search where (teamA @> ? AND teamB @> ?) OR (teamA @> ? AND teamB @> ?) order by match_id desc limit 10",
+              [teamA, teamB, teamB, teamA]
+            )
               .asCallback((err, result) => {
                 if (err) {
                   return cb(err);
@@ -4139,25 +4139,25 @@ const spec = {
           const heroId = req.params.hero_id;
           raw(
             `SELECT
-          matches.match_id,
-          matches.start_time,
-          matches.duration,
-          matches.radiant_win,
-          matches.leagueid,
-          leagues.name as league_name,
-          ((player_matches.player_slot < 128) = matches.radiant_win) radiant,
-          player_matches.player_slot,
-          player_matches.account_id,
-          player_matches.kills,
-          player_matches.deaths,
-          player_matches.assists
-          FROM matches
-          JOIN player_matches using(match_id)
-          JOIN leagues using(leagueid)
-          LEFT JOIN heroes on heroes.id = player_matches.hero_id
-          WHERE player_matches.hero_id = ?
-          ORDER BY matches.match_id DESC
-          LIMIT 100`,
+      matches.match_id,
+      matches.start_time,
+      matches.duration,
+      matches.radiant_win,
+      matches.leagueid,
+      leagues.name as league_name,
+      ((player_matches.player_slot < 128) = matches.radiant_win) radiant,
+      player_matches.player_slot,
+      player_matches.account_id,
+      player_matches.kills,
+      player_matches.deaths,
+      player_matches.assists
+      FROM matches
+      JOIN player_matches using(match_id)
+      JOIN leagues using(leagueid)
+      LEFT JOIN heroes on heroes.id = player_matches.hero_id
+      WHERE player_matches.hero_id = ?
+      ORDER BY matches.match_id DESC
+      LIMIT 100`,
             [heroId]
           ).asCallback((err, result) => {
             if (err) {
@@ -4209,16 +4209,16 @@ const spec = {
           const heroId = req.params.hero_id;
           raw(
             `SELECT
-          pm2.hero_id,
-          count(player_matches.match_id) games_played,
-          sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins
-          FROM matches
-          JOIN player_matches using(match_id)
-          JOIN player_matches pm2 on player_matches.match_id = pm2.match_id AND (player_matches.player_slot < 128) != (pm2.player_slot < 128)
-          WHERE player_matches.hero_id = ?
-          AND matches.start_time > ?
-          GROUP BY pm2.hero_id
-          ORDER BY games_played DESC`,
+      pm2.hero_id,
+      count(player_matches.match_id) games_played,
+      sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins
+      FROM matches
+      JOIN player_matches using(match_id)
+      JOIN player_matches pm2 on player_matches.match_id = pm2.match_id AND (player_matches.player_slot < 128) != (pm2.player_slot < 128)
+      WHERE player_matches.hero_id = ?
+      AND matches.start_time > ?
+      GROUP BY pm2.hero_id
+      ORDER BY games_played DESC`,
             [heroId, moment().subtract(1, "year").format("X")]
           ).asCallback((err, result) => {
             if (err) {
@@ -4270,13 +4270,13 @@ const spec = {
           const heroId = req.params.hero_id;
           raw(
             `SELECT
-          (matches.duration / 300 * 300) duration_bin,
-          count(match_id) games_played,
-          sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins
-          FROM matches
-          JOIN player_matches using(match_id)
-          WHERE player_matches.hero_id = ?
-          GROUP BY (matches.duration / 300 * 300)`,
+      (matches.duration / 300 * 300) duration_bin,
+      count(match_id) games_played,
+      sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins
+      FROM matches
+      JOIN player_matches using(match_id)
+      WHERE player_matches.hero_id = ?
+      GROUP BY (matches.duration / 300 * 300)`,
             [heroId]
           ).asCallback((err, result) => {
             if (err) {
@@ -4311,14 +4311,14 @@ const spec = {
           const heroId = req.params.hero_id;
           raw(
             `SELECT
-              account_id,
-              count(match_id) games_played,
-              sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins
-              FROM matches
-              JOIN player_matches using(match_id)
-              WHERE player_matches.hero_id = ?
-              GROUP BY account_id
-              ORDER BY games_played DESC`,
+        account_id,
+        count(match_id) games_played,
+        sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins
+        FROM matches
+        JOIN player_matches using(match_id)
+        WHERE player_matches.hero_id = ?
+        GROUP BY account_id
+        ORDER BY games_played DESC`,
             [heroId]
           ).asCallback((err, result) => {
             if (err) {
@@ -4460,8 +4460,8 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `SELECT leagues.*
-          FROM leagues
-          WHERE leagues.leagueid = ?`,
+      FROM leagues
+      WHERE leagues.leagueid = ?`,
             [req.params.league_id]
           ).asCallback((err, result) => {
             if (err) {
@@ -4494,8 +4494,8 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `SELECT matches.*
-          FROM matches
-          WHERE matches.leagueid = ?`,
+      FROM matches
+      WHERE matches.leagueid = ?`,
             [req.params.league_id]
           ).asCallback((err, result) => {
             if (err) {
@@ -4528,12 +4528,12 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `SELECT team_rating.*, teams.*
-          FROM matches
-          LEFT JOIN team_match using(match_id)
-          LEFT JOIN teams using(team_id)
-          LEFT JOIN team_rating using(team_id)
-          WHERE matches.leagueid = ?
-          GROUP BY (teams.team_id, team_rating.team_id)`,
+      FROM matches
+      LEFT JOIN team_match using(match_id)
+      LEFT JOIN teams using(team_id)
+      LEFT JOIN team_rating using(team_id)
+      WHERE matches.leagueid = ?
+      GROUP BY (teams.team_id, team_rating.team_id)`,
             [req.params.league_id]
           ).asCallback((err, result) => {
             if (err) {
@@ -4577,11 +4577,11 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `SELECT team_rating.*, teams.*
-          FROM teams
-          LEFT JOIN team_rating using(team_id)
-          ORDER BY rating desc NULLS LAST
-          LIMIT 1000
-          OFFSET ?`,
+      FROM teams
+      LEFT JOIN team_rating using(team_id)
+      ORDER BY rating desc NULLS LAST
+      LIMIT 1000
+      OFFSET ?`,
             [(Number(req.query.page) || 0) * 1000]
           ).asCallback((err, result) => {
             if (err) {
@@ -4614,9 +4614,9 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `SELECT team_rating.*, teams.*
-          FROM teams
-          LEFT JOIN team_rating using(team_id)
-          WHERE teams.team_id = ?`,
+      FROM teams
+      LEFT JOIN team_rating using(team_id)
+      WHERE teams.team_id = ?`,
             [req.params.team_id]
           ).asCallback((err, result) => {
             if (err) {
@@ -4678,15 +4678,15 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `
-          SELECT team_match.match_id, radiant_win, radiant_score, dire_score, team_match.radiant, duration, start_time, leagueid, leagues.name as league_name, cluster, tm2.team_id opposing_team_id, teams2.name opposing_team_name, teams2.logo_url opposing_team_logo
-          FROM team_match
-          JOIN matches USING(match_id)
-          JOIN leagues USING(leagueid)
-          JOIN team_match tm2 on team_match.match_id = tm2.match_id and team_match.team_id != tm2.team_id
-          JOIN teams teams2 on tm2.team_id = teams2.team_id
-          WHERE team_match.team_id = ?
-          ORDER BY match_id DESC
-          `,
+      SELECT team_match.match_id, radiant_win, radiant_score, dire_score, team_match.radiant, duration, start_time, leagueid, leagues.name as league_name, cluster, tm2.team_id opposing_team_id, teams2.name opposing_team_name, teams2.logo_url opposing_team_logo
+      FROM team_match
+      JOIN matches USING(match_id)
+      JOIN leagues USING(leagueid)
+      JOIN team_match tm2 on team_match.match_id = tm2.match_id and team_match.team_id != tm2.team_id
+      JOIN teams teams2 on tm2.team_id = teams2.team_id
+      WHERE team_match.team_id = ?
+      ORDER BY match_id DESC
+      `,
             [req.params.team_id]
           ).asCallback((err, result) => {
             if (err) {
@@ -4742,14 +4742,14 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `SELECT account_id, notable_players.name, count(matches.match_id) games_played, sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins, notable_players.team_id = teams.team_id is_current_team_member
-          FROM matches
-          JOIN team_match USING(match_id)
-          JOIN player_matches ON player_matches.match_id = matches.match_id AND team_match.radiant = (player_matches.player_slot < 128)
-          JOIN teams USING (team_id)
-          LEFT JOIN notable_players USING(account_id)
-          WHERE teams.team_id = ?
-          GROUP BY account_id, notable_players.name, notable_players.team_id, teams.team_id
-          ORDER BY games_played DESC`,
+      FROM matches
+      JOIN team_match USING(match_id)
+      JOIN player_matches ON player_matches.match_id = matches.match_id AND team_match.radiant = (player_matches.player_slot < 128)
+      JOIN teams USING (team_id)
+      LEFT JOIN notable_players USING(account_id)
+      WHERE teams.team_id = ?
+      GROUP BY account_id, notable_players.name, notable_players.team_id, teams.team_id
+      ORDER BY games_played DESC`,
             [req.params.team_id]
           ).asCallback((err, result) => {
             if (err) {
@@ -4801,14 +4801,14 @@ const spec = {
         func: (req, res, cb) => {
           raw(
             `SELECT hero_id, localized_name, count(matches.match_id) games_played, sum(case when (player_matches.player_slot < 128) = matches.radiant_win then 1 else 0 end) wins
-          FROM matches
-          JOIN team_match USING(match_id)
-          JOIN player_matches ON player_matches.match_id = matches.match_id AND team_match.radiant = (player_matches.player_slot < 128)
-          JOIN teams USING(team_id)
-          LEFT JOIN heroes ON player_matches.hero_id = heroes.id
-          WHERE teams.team_id = ?
-          GROUP BY hero_id, localized_name
-          ORDER BY games_played DESC`,
+      FROM matches
+      JOIN team_match USING(match_id)
+      JOIN player_matches ON player_matches.match_id = matches.match_id AND team_match.radiant = (player_matches.player_slot < 128)
+      JOIN teams USING(team_id)
+      LEFT JOIN heroes ON player_matches.hero_id = heroes.id
+      WHERE teams.team_id = ?
+      GROUP BY hero_id, localized_name
+      ORDER BY games_played DESC`,
             [req.params.team_id]
           ).asCallback((err, result) => {
             if (err) {
@@ -5079,8 +5079,8 @@ const spec = {
             description: "Filter by lane role 1-4 (Safe, Mid, Off, Jungle)",
             required: false,
             schema: {
-            type: "string",
-            type: "string",
+              type: "string",
+              type: "string",
               type: "string",
             },
           },
