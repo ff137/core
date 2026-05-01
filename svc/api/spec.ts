@@ -23,7 +23,7 @@ import {
   wordcloudCols,
   recentMatchesCols,
 } from "./playerFields.ts";
-import db from "../store/db.ts";
+import db, { pgApplicationName } from "../store/db.ts";
 import redis, { redisCount, redisCountDistinct } from "../store/redis.ts";
 import packageJson from "../../package.json" with { type: "json" };
 import generateOperationId from "./generateOperationId.ts";
@@ -91,14 +91,23 @@ import { PRIORITY } from "../util/priority.ts";
 import { getPatchIndex } from "../util/compute.ts";
 import { matchupToString } from "../util/matchups.ts";
 
+const explorerPoolAppName = pgApplicationName("explorer");
 const pool = new Pool({
   connectionString: config.READONLY_POSTGRES_URL,
+  application_name: explorerPoolAppName,
   statement_timeout: 15000,
   query_timeout: 15000,
   lock_timeout: 15000,
   connectionTimeoutMillis: 15000,
   max: 5,
 });
+
+console.log(
+  "[POSTGRES] explorer pool application_name=%s max=%s statement_timeout_ms=%s",
+  explorerPoolAppName,
+  5,
+  15000,
+);
 
 const parameters = {
   ...heroParams,
