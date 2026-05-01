@@ -30,10 +30,9 @@ const defaults = {
   POSTGRES_URL: "postgresql://postgres:postgres@localhost/yasp", // connection string for PostgreSQL
   READONLY_POSTGRES_URL: "postgresql://readonly:readonly@localhost/yasp", // readonly connection string for PostgreSQL
   POSTGRES_MAX_CONNECTIONS: "10", // Number of maximum connections in pool for postgres (per process)
-  /** Non-empty integer milliseconds applied per Knex pool connection via SET ... (disabled when unset). */
-  POSTGRES_STATEMENT_TIMEOUT_MS: "",
-  POSTGRES_LOCK_TIMEOUT_MS: "",
-  POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS: "",
+  POSTGRES_STATEMENT_TIMEOUT_MS: "", // Knex pool: SET statement_timeout per connection (ms, empty = off)
+  POSTGRES_LOCK_TIMEOUT_MS: "", // Knex pool: SET lock_timeout per connection (ms, empty = off)
+  POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS: "", // Knex pool: SET idle_in_transaction_session_timeout (ms, empty = off)
   REDIS_URL: "redis://127.0.0.1:6379/0", // connection string for Redis
   CASSANDRA_URL: "cassandra://localhost/yasp", // connection string for Cassandra
   RETRIEVER_SECRET: "", // string to use as shared secret with retriever/parser

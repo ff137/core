@@ -50,19 +50,20 @@ function knexPoolSessionStatements(): string[] {
 const knexAppName = pgApplicationName("knex");
 const sessionStmts = knexPoolSessionStatements();
 
+const knexTimeoutSummary = sessionStmts.length
+  ? [
+      `statement=${config.POSTGRES_STATEMENT_TIMEOUT_MS || "0"}ms`,
+      `lock=${config.POSTGRES_LOCK_TIMEOUT_MS || "0"}ms`,
+      `idle_in_tx=${config.POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS || "0"}ms`,
+    ].join(" ")
+  : "off";
+
 console.log(
-  "[POSTGRES] knex connecting role=%s max=%s application_name=%s session_timeouts=%s",
+  "[POSTGRES] knex role=%s max=%s application_name=%s session_timeouts=%s",
   config.APP_NAME || "(unset)",
   config.POSTGRES_MAX_CONNECTIONS,
   knexAppName,
-  sessionStmts.length
-    ? {
-        statement_ms: config.POSTGRES_STATEMENT_TIMEOUT_MS || "(off)",
-        lock_ms: config.POSTGRES_LOCK_TIMEOUT_MS || "(off)",
-        idle_in_tx_ms:
-          config.POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS || "(off)",
-      }
-    : "(none)",
+  knexTimeoutSummary,
 );
 
 export const db = knex({
