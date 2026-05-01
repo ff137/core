@@ -1,6 +1,6 @@
 import moment from "moment";
 import redis, { redisCount } from "./redis.ts";
-import db from "./db.ts";
+import db, { pgApplicationName } from "./db.ts";
 import config from "../../config.ts";
 import { Client } from "pg";
 import c from "ansi-colors";
@@ -55,8 +55,19 @@ export async function runReliableQueue(
   getCapacity?: () => Promise<number>,
 ) {
   const executor = async (i: number) => {
-    const consumer = new Client(config.POSTGRES_URL);
+    const appName = pgApplicationName(`queue:${queueName}:${i}`);
+    const consumer = new Client({
+      connectionString: config.POSTGRES_URL,
+      application_name: appName,
+    });
     await consumer.connect();
+    console.log(
+      "[POSTGRES] reliable queue consumer role=%s queue=%s slot=%d application_name=%s",
+      config.APP_NAME || "(unset)",
+      queueName,
+      i,
+      appName,
+    );
     while (true) {
       // If we have a way to measure capacity, throttle the processing speed based on capacity
       if (getCapacity && i >= (await getCapacity())) {
